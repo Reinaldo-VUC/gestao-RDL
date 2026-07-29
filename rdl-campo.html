@@ -676,7 +676,90 @@ function initApp(user){
   document.getElementById('fab-lanc').style.display='flex';
   document.getElementById('cfg-user-info').textContent = (user.displayName||'')+' — '+(user.email||'');
   setSyncDot('ok');
+  seedDadosReais();
   renderAll();
+}
+
+// ═══════════════════════════════════════════════
+// SEED — dados reais levantados no diagnóstico financeiro (extrato Bradesco jun/2026 + planilha)
+// Roda uma única vez (guardado em store.config.seedV1). Revise os valores marcados como "conferir".
+// ═══════════════════════════════════════════════
+function proximaDataDiaSeed(dia){
+  const now = new Date();
+  let d = new Date(now.getFullYear(), now.getMonth(), dia);
+  if(d < now) d = new Date(now.getFullYear(), now.getMonth()+1, dia);
+  return d.toISOString().split('T')[0];
+}
+function seedDadosReais(){
+  if(store.config && store.config.seedV1) return; // já rodou
+  if(!store.config) store.config = {};
+
+  // Dívidas parceladas
+  store.dividas.push({ id: uid(), nome:'Pronampe (Capital de Giro)', parcelaAtual:20, totalParcelas:42, valorParcela:5283.97, dia:18 });
+  store.dividas.push({ id: uid(), nome:'DAS retroativo (parcelamento)', parcelaAtual:42, totalParcelas:60, valorParcela:519.94, dia:31 });
+
+  // Custo da dívida — junho/2026 (tarifa cheque empresarial + IOF + tarifa manutenção C/C + encargos limite crédito)
+  store.encargos.push({ id: uid(), mesRef:'2026-06', valor:1552.03 });
+
+  // Despesas fixas
+  store.despesasFixas.push({ id: uid(), desc:'Aluguel escritório', valor:1078.00, dia:19 });
+  store.despesasFixas.push({ id: uid(), desc:'Contabilidade Liberdade', valor:500.00, dia:1 });
+  store.despesasFixas.push({ id: uid(), desc:'Pró-labore Reinaldo', valor:5000.00, dia:5, obs:'Vale-alimentação via cartão de crédito da empresa — lançar à parte quando usado' });
+  store.despesasFixas.push({ id: uid(), desc:'Pró-labore Ornélio', valor:4500.00, dia:5, obs:'Pago em duas parcelas (dia 5 e dia 20) — ajuste se necessário' });
+  store.despesasFixas.push({ id: uid(), desc:'Vale refeição Ornélio', valor:588.00, dia:5 });
+  store.despesasFixas.push({ id: uid(), desc:'DAS mensal (Simples Nacional)', valor:1004.48, dia:20, obs:'Valor referente à competência 06/2026 — atualize todo mês pelo valor real da guia' });
+  store.despesasFixas.push({ id: uid(), desc:'INSS (contribuição individual)', valor:178.31, dia:20, obs:'Valor referente à competência 06/2026 — atualize todo mês pelo valor real da guia' });
+
+  // Contratos ativos → lançamentos recorrentes
+  const contratos = [
+    { cliente:'EMUSA', servico:'Contrato mensal', valor:8000.00, dia:26 },
+    { cliente:'GranCoffee', servico:'Contrato mensal (5 unidades)', valor:4215.00, dia:27 },
+    { cliente:'Clínica Bellart', servico:'Contrato mensal', valor:350.00, dia:27 },
+    { cliente:'Maxime Office Tower', servico:'PMOC áreas comuns', valor:2035.00, dia:12 },
+    { cliente:'SL Alimentos', servico:'Contrato mensal', valor:750.00, dia:15, obs:'Conferir dia exato — contrato encerra em outubro/2026' },
+    { cliente:'Maria Luize Queiroz', servico:'Plano de manutenção', valor:200.00, dia:5 },
+    { cliente:'Welton Rodrigues More', servico:'Plano de manutenção preventiva', valor:150.00, dia:18 },
+    { cliente:'José Henrique Paraguay', servico:'Plano de manutenção', valor:125.00, dia:25 },
+    { cliente:'Kelly Christina Franco de Oliveira', servico:'Plano de manutenção', valor:200.00, dia:20, obs:'Confirmar dia exato de vencimento' },
+  ];
+  contratos.forEach(c=>{
+    store.lancamentos.push({
+      id: uid(), cliente:c.cliente, servico:c.servico, orc:'', valor:c.valor,
+      data: proximaDataDiaSeed(c.dia), statusPag:'pendente', forma:'boleto',
+      status:'agendado', recorrente:true, periodicidade:'mensal',
+      obs: c.obs || 'Importado do diagnóstico financeiro', criadoEm: Date.now()
+    });
+  });
+
+  // Alertas — pendências urgentes deste mês
+  store.alertas.push({ id: uid(), texto:'DAS mensal (Simples Nacional) — vencido, ainda em atraso', data:'2026-07-20' });
+  store.alertas.push({ id: uid(), texto:'INSS — guia vencida, ainda em atraso', data:'2026-07-20' });
+  store.alertas.push({ id: uid(), texto:'DAS retroativo parcela 43/60 — vence em 2 dias', data:'2026-07-31' });
+
+  // GranCoffee — cronograma de higienização (próximas datas do ano)
+  const gc = [
+    { cliente:'GranCoffee - Unicamp', data:'2026-09-23' },
+    { cliente:'GranCoffee - Hortolândia', data:'2026-09-13' },
+    { cliente:'GranCoffee - Campinas', data:'2026-09-10' },
+    { cliente:'GranCoffee - CT Treinamento', data:'2026-09-26' },
+    { cliente:'GranCoffee - São Paulo', data:'2026-09-18' },
+    { cliente:'GranCoffee - Unicamp', data:'2026-11-23' },
+    { cliente:'GranCoffee - Hortolândia', data:'2026-11-13' },
+    { cliente:'GranCoffee - Campinas', data:'2026-11-10' },
+    { cliente:'GranCoffee - CT Treinamento', data:'2026-11-26' },
+    { cliente:'GranCoffee - São Paulo', data:'2026-11-18' },
+  ];
+  gc.forEach(v=>{
+    store.lancamentos.push({
+      id: uid(), cliente:v.cliente, servico:'Higienização', orc:'', valor:0,
+      data:v.data, statusPag:'pago', forma:'boleto', status:'agendado', recorrente:false,
+      obs:'Incluído no contrato mensal GranCoffee — data prevista do cronograma', criadoEm: Date.now()
+    });
+  });
+
+  store.config.seedV1 = true;
+  saveStore();
+  showToast('Dados do diagnóstico financeiro carregados — confira os detalhes na Agenda e Despesas');
 }
 
 // ── TABS ─────────────────────────────────────────
