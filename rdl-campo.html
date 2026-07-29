@@ -576,6 +576,7 @@ function cleanForFirestore(obj){
 let _saveTimer=null;
 function saveStore(){
   if(!currentUser) return;
+  _isSaving = true; // trava o listener em tempo real imediatamente, antes do debounce
   clearTimeout(_saveTimer);
   _saveTimer = setTimeout(_doSave, 350);
 }
@@ -691,8 +692,15 @@ function proximaDataDiaSeed(dia){
   return d.toISOString().split('T')[0];
 }
 function seedDadosReais(){
-  if(store.config && store.config.seedV1) return; // já rodou
+  if(store.config && store.config.seedV2) return; // já rodou
   if(!store.config) store.config = {};
+
+  // Limpa qualquer lançamento de teste anterior antes de popular com os dados reais
+  store.lancamentos = [];
+  store.despesasFixas = [];
+  store.dividas = [];
+  store.encargos = [];
+  store.alertas = [];
 
   // Dívidas parceladas
   store.dividas.push({ id: uid(), nome:'Pronampe (Capital de Giro)', parcelaAtual:20, totalParcelas:42, valorParcela:5283.97, dia:18 });
@@ -757,7 +765,7 @@ function seedDadosReais(){
     });
   });
 
-  store.config.seedV1 = true;
+  store.config.seedV2 = true;
   saveStore();
   showToast('Dados do diagnóstico financeiro carregados — confira os detalhes na Agenda e Despesas');
 }
