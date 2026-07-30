@@ -324,7 +324,7 @@ label{font-size:10.5px;color:var(--mu);margin-bottom:5px;display:block;font-weig
 </div>
 </div>
 
-<button class="fab" id="fab-lanc" onclick="openModal('modal-lanc')" style="display:none">+</button>
+<button class="fab" id="fab-lanc" onclick="fabClick()" style="display:none">+</button>
 
 <div class="bottomnav" id="bottomnav" style="display:none">
   <button class="bn-item active" onclick="switchTab('dashboard')" id="bn-dashboard"><span class="bn-ic">📊</span><span class="bn-lbl">Início</span></button>
@@ -678,6 +678,8 @@ function initApp(user){
   document.getElementById('cfg-user-info').textContent = (user.displayName||'')+' — '+(user.email||'');
   setSyncDot('ok');
   seedDadosReais();
+  seedEntradasHistoricas();
+  seedAtualizacaoJulho();
   renderAll();
 }
 
@@ -770,6 +772,70 @@ function seedDadosReais(){
   showToast('Dados do diagnóstico financeiro carregados — confira os detalhes na Agenda e Despesas');
 }
 
+// ═══════════════════════════════════════════════
+// SEED — entradas avulsas históricas (extrato mai/jun 2026). Só ADICIONA, nunca apaga nada existente.
+// ═══════════════════════════════════════════════
+function seedEntradasHistoricas(){
+  if(store.config && store.config.seedEntradasV1) return; // já rodou
+  if(!store.config) store.config = {};
+
+  const avulsos = [
+    { cliente:'Liquidação cobrança', valor:1700.00, data:'2026-05-29', servico:'Cobrança avulsa' },
+    { cliente:'Tiago Pepinelli', valor:350.00, data:'2026-06-09', servico:'Serviço avulso' },
+    { cliente:'Leonardo Matheus da S.', valor:1064.00, data:'2026-06-11', servico:'Serviço avulso' },
+    { cliente:'Leonardo Gentil', valor:200.00, data:'2026-06-15', servico:'Serviço avulso' },
+    { cliente:'CKM Roschel Modas', valor:750.00, data:'2026-06-18', servico:'Serviço avulso' },
+    { cliente:'Alef Causs', valor:400.00, data:'2026-06-18', servico:'Serviço avulso' },
+    { cliente:'Anderson Pereira Roli', valor:200.00, data:'2026-06-18', servico:'Serviço avulso' },
+    { cliente:'Elton Morassutti', valor:400.00, data:'2026-06-18', servico:'Serviço avulso' },
+    { cliente:'Catharine Loures', valor:300.00, data:'2026-06-23', servico:'Serviço avulso' },
+    { cliente:'Luiz Fernando Azevedo', valor:1000.00, data:'2026-06-23', servico:'Serviço avulso' },
+    { cliente:'Claudio Fernando Zaia', valor:600.00, data:'2026-06-23', servico:'Serviço avulso' },
+    { cliente:'Instalações piso teto', valor:4965.00, data:'2026-06-24', servico:'Instalação (parcial)' },
+    { cliente:'Avulsos diversos', valor:600.00, data:'2026-06-25', servico:'Recebimento maquininha (consolidado)', forma:'infinitpay' },
+  ];
+  avulsos.forEach(a=>{
+    store.lancamentos.push({
+      id: uid(), cliente:a.cliente, servico:a.servico, orc:'', valor:a.valor,
+      data:a.data, statusPag:'pago', forma:a.forma||'pix',
+      status:'concluido', recorrente:false,
+      obs:'Histórico — extrato mai/jun 2026', criadoEm: Date.now()
+    });
+  });
+
+  store.config.seedEntradasV1 = true;
+  saveStore();
+  showToast('Entradas avulsas de maio/junho carregadas');
+}
+
+// ═══════════════════════════════════════════════
+// SEED — atualizações de julho (parcela Pronampe reajustada, custos fixos identificados depois, comissão StrategyBox). Só adiciona/atualiza, nunca apaga.
+// ═══════════════════════════════════════════════
+function seedAtualizacaoJulho(){
+  if(store.config && store.config.seedJulhoV1) return; // já rodou
+  if(!store.config) store.config = {};
+
+  // Pronampe — parcela reajustada
+  const pronampe = store.dividas.find(d=>d.nome==='Pronampe (Capital de Giro)');
+  if(pronampe) pronampe.valorParcela = 5345.36;
+
+  // Custos fixos identificados depois do primeiro seed
+  store.despesasFixas.push({ id: uid(), desc:'Automação bancária', valor:25.00, dia:5 });
+  store.despesasFixas.push({ id: uid(), desc:'Tarifa bancária', valor:200.00, dia:5 });
+  store.despesasFixas.push({ id: uid(), desc:'CREA', valor:258.00, dia:30 });
+
+  // Comissão StrategyBox Marketing — venda piso teto
+  store.lancamentos.push({
+    id: uid(), cliente:'StrategyBox Marketing', servico:'Comissão fornecedor (piso teto)',
+    orc:'', valor:743.10, data:'2026-07-20', statusPag:'pago', forma:'pix',
+    status:'concluido', recorrente:false, obs:'Comissão sobre venda de piso teto', criadoEm: Date.now()
+  });
+
+  store.config.seedJulhoV1 = true;
+  saveStore();
+  showToast('Atualizações de julho aplicadas');
+}
+
 // ── TABS ─────────────────────────────────────────
 let currentTab = 'dashboard';
 function switchTab(id){
@@ -780,6 +846,16 @@ function switchTab(id){
   const bn = document.getElementById('bn-'+id); if(bn) bn.classList.add('active');
   document.getElementById('fab-lanc').style.display = (id==='config') ? 'none' : 'flex';
   renderAll();
+}
+
+function fabClick(){
+  if(currentTab==='despesas'){
+    document.getElementById('dr-data').value = today();
+    openModal('modal-desp-rapida');
+  } else {
+    lcResetForm();
+    openModal('modal-lanc');
+  }
 }
 
 function renderAll(){
@@ -944,7 +1020,7 @@ document.getElementById('modal-lanc').addEventListener('click', function(e){
 });
 document.querySelector('#modal-lanc .modal-hdr .modal-close').addEventListener('click', ()=>{});
 // ensure fresh form each open via fab
-document.getElementById('fab-lanc').addEventListener('click', lcResetForm);
+// (comportamento do FAB agora tratado por fabClick(), contextual por aba)
 
 // ═══════════════════════════════════════════════
 // DASHBOARD
@@ -1051,6 +1127,12 @@ function temAgendamentoNoDia(iso){
   return store.lancamentos.some(l=>l.data===iso && l.status!=='cancelado');
 }
 
+function agNovoNoDia(iso){
+  lcResetForm();
+  document.getElementById('lc-data').value = iso;
+  openModal('modal-lanc');
+}
+
 function renderAgenda(){
   if(agModo==='semana') renderAgendaSemana();
   else renderAgendaMes();
@@ -1076,7 +1158,7 @@ function renderAgendaSemana(){
     const isFree = !items.some(i=>i.status!=='cancelado') && d.dow!==0;
     return `<div class="day-block">
       <div class="day-hdr ${isToday?'today':''}">${d.nome} ${String(d.num).padStart(2,'0')}${isToday?' · hoje':''} ${isFree?'<span class="free-tag">livre</span>':''}</div>
-      ${items.length ? items.map(renderLancItem).join('') : '<div class="empty-msg">Nada agendado</div>'}
+      ${items.length ? items.map(renderLancItem).join('') : `<div class="empty-msg" style="cursor:pointer;color:var(--ic);border:1px dashed var(--bd);border-radius:10px;padding:14px" onclick="agNovoNoDia('${d.iso}')">+ Agendar nesse dia</div>`}
     </div>`;
   }).join('');
 }
