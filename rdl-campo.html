@@ -683,7 +683,47 @@ function initApp(user){
   seedDadosReais();
   seedEntradasHistoricas();
   seedAtualizacaoJulho();
+  rolarRecorrentes();
   renderAll();
+}
+
+// ═══════════════════════════════════════════════
+// ROLLOVER — gera automaticamente a próxima cobrança de cada contrato recorrente
+// quando a data da última ocorrência já passou. Roda no máximo uma vez por dia.
+// ═══════════════════════════════════════════════
+function avancarDataPeriodicidade(dataStr, periodicidade){
+  const d = new Date(dataStr+'T00:00:00');
+  if(periodicidade==='quinzenal') d.setDate(d.getDate()+15);
+  else if(periodicidade==='bimestral') d.setMonth(d.getMonth()+2);
+  else if(periodicidade==='trimestral') d.setMonth(d.getMonth()+3);
+  else d.setMonth(d.getMonth()+1); // mensal (padrão)
+  return d.toISOString().split('T')[0];
+}
+function rolarRecorrentes(){
+  const hojeStr = today();
+  if(!store.config) store.config = {};
+  if(store.config.lastRolloverCheck === hojeStr) return; // já checado hoje
+
+  const series = {};
+  store.lancamentos.forEach(l=>{
+    if(!l.recorrente || l.status==='cancelado') return;
+    const key = l.cliente+'|'+l.servico;
+    if(!series[key] || l.data > series[key].data) series[key] = l;
+  });
+  let criouAlgum = false;
+  Object.values(series).forEach(l=>{
+    if(l.data < hojeStr){
+      store.lancamentos.push({
+        id: uid(), cliente:l.cliente, servico:l.servico, orc:l.orc||'',
+        valor:l.valor, data: avancarDataPeriodicidade(l.data, l.periodicidade),
+        statusPag:'pendente', forma:l.forma, status:'agendado',
+        recorrente:true, periodicidade:l.periodicidade, obs:'', criadoEm: Date.now()
+      });
+      criouAlgum = true;
+    }
+  });
+  store.config.lastRolloverCheck = hojeStr;
+  if(criouAlgum) saveStore();
 }
 
 // ═══════════════════════════════════════════════
@@ -1245,12 +1285,12 @@ function renderEntradas(){
       ${pagos.length ? pagos.map(l=>`<div class="mini-row st-pago"><div class="mini-l"><b>${l.cliente}</b><span>${l.servico} · ${fmtDateBR(l.data)} · ${labelForma(l.forma)}</span></div><div class="mini-r"><span class="tag tag-pago">Recebido</span><br><b>${R(l.valor)}</b></div></div>`).join('') : '<div class="empty-msg">Nenhum avulso recebido ainda</div>'}
       </div>`;
   } else {
-    const recorrentes = store.lancamentos.filter(l=>l.recorrente);
-    const porCliente = {};
-    recorrentes.forEach(l=>{ if(!porCliente[l.cliente] || l.data>porCliente[l.cliente].data) porCliente[l.cliente]=l; });
-    const lista = Object.values(porCliente);
-    body.innerHTML = `<div class="card"><div class="card-title">Contratos / recorrentes <span class="sub">${lista.length}</span></div>
-      ${lista.length ? lista.map(l=>`<div class="mini-row st-${l.statusPag}"><div class="mini-l"><b>${l.cliente}</b><span>${l.servico} · a cada ${l.periodicidade}</span></div><div class="mini-r"><span class="tag tag-${l.statusPag}">${l.statusPag==='pago'?'Pago':'Pendente'}</span><br><b>${R(l.valor)}</b><br><span style="font-size:10px;color:var(--mu)">${labelForma(l.forma)}</span></div></div>`).join('') : '<div class="empty-msg">Nenhum recorrente cadastrado — marque "é recorrente" ao criar um lançamento</div>'}
+    const recorrentes = store.lancamentos.filter(l=>l.recorrente && l.status!=='cancelado');
+    const porSerie = {};
+    recorrentes.forEach(l=>{ const key=l.cliente+'|'+l.servico; if(!porSerie[key] || l.data>porSerie[key].data) porSerie[key]=l; });
+    const lista = Object.values(porSerie).sort((a,b)=>(a.data||'').localeCompare(b.data||''));
+    body.innerHTML = `<p style="font-size:11px;color:var(--mu);margin-bottom:10px;">Toque num contrato pra editar valor, dia ou forma de pagamento.</p><div class="card"><div class="card-title">Contratos / recorrentes <span class="sub">${lista.length}</span></div>
+      ${lista.length ? lista.map(l=>`<div class="mini-row st-${l.statusPag}" style="cursor:pointer" onclick="lcEditar('${l.id}')"><div class="mini-l"><b>${l.cliente}</b><span>${l.servico} · a cada ${l.periodicidade} · próx. ${fmtDateBR(l.data)}</span></div><div class="mini-r"><span class="tag tag-${l.statusPag}">${l.statusPag==='pago'?'Pago':'Pendente'}</span><br><b>${R(l.valor)}</b><br><span class="tag tag-forma">${labelForma(l.forma)}</span></div></div>`).join('') : '<div class="empty-msg">Nenhum recorrente cadastrado — marque "é recorrente" ao criar um lançamento</div>'}
       </div>`;
   }
 }
