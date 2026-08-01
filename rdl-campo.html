@@ -287,9 +287,8 @@ label{font-size:10.5px;color:var(--mu);margin-bottom:5px;display:block;font-weig
     <div class="kpi-row" id="ent-kpi-row"></div>
     <p id="ent-total-geral" style="font-size:10.5px;color:var(--mu);margin:-4px 0 12px;text-align:center;"></p>
     <div class="tabs-row">
-      <button class="chip active" id="ent-tab-infinit" onclick="entSetTab('infinit')">Infinitpay</button>
-      <button class="chip" id="ent-tab-boleto" onclick="entSetTab('boleto')">Avulsos</button>
-      <button class="chip" id="ent-tab-fixo" onclick="entSetTab('fixo')">Recorrentes (fixo)</button>
+      <button class="chip active" id="ent-tab-avulsos" onclick="entSetTab('avulsos')">Avulsos</button>
+      <button class="chip" id="ent-tab-fixo" onclick="entSetTab('fixo')">Recorrentes</button>
     </div>
     <div id="ent-body"></div>
   </div>
@@ -330,6 +329,17 @@ label{font-size:10.5px;color:var(--mu);margin-bottom:5px;display:block;font-weig
   </div>
 
   <!-- CONFIG -->
+  <!-- ANÁLISE -->
+  <div class="tab-pane hide" id="pane-analise">
+    <div class="mes-nav">
+      <button class="icon-btn" onclick="mudarMesFoco(-1)">◀</button>
+      <div class="mes-nav-lbl" id="mesfoco-lbl-analise"></div>
+      <button class="icon-btn" onclick="mudarMesFoco(1)">▶</button>
+      <button class="mes-hoje-btn" id="mesfoco-hoje-analise" onclick="mesFocoHoje()">hoje</button>
+    </div>
+    <div id="analise-body"></div>
+  </div>
+
   <div class="tab-pane hide" id="pane-config">
     <div class="card">
       <div class="card-title">Conta</div>
@@ -360,6 +370,7 @@ label{font-size:10.5px;color:var(--mu);margin-bottom:5px;display:block;font-weig
   <button class="bn-item" onclick="switchTab('agenda')" id="bn-agenda"><span class="bn-ic">📅</span><span class="bn-lbl">Agenda</span></button>
   <button class="bn-item" onclick="switchTab('entradas')" id="bn-entradas"><span class="bn-ic">💰</span><span class="bn-lbl">Entradas</span></button>
   <button class="bn-item" onclick="switchTab('despesas')" id="bn-despesas"><span class="bn-ic">💸</span><span class="bn-lbl">Despesas</span></button>
+  <button class="bn-item" onclick="switchTab('analise')" id="bn-analise"><span class="bn-ic">📈</span><span class="bn-lbl">Análise</span></button>
 </div>
 
 <!-- MODAL: LANÇAMENTO ÚNICO -->
@@ -416,9 +427,12 @@ label{font-size:10.5px;color:var(--mu);margin-bottom:5px;display:block;font-weig
       <input type="hidden" id="lc-status" value="agendado">
     </div>
     <div class="field">
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-        <input type="checkbox" id="lc-recorrente" style="width:18px;height:18px" onchange="lcToggleRecorrente()"> É recorrente / contrato fixo?
-      </label>
+      <label>Tipo de serviço</label>
+      <div class="chip-row" id="lc-tipo-chips">
+        <button type="button" class="chip active" data-v="avulso" onclick="setTipoServicoUI(false)">Avulso</button>
+        <button type="button" class="chip" data-v="recorrente" onclick="setTipoServicoUI(true)">Contrato / Recorrente</button>
+      </div>
+      <input type="hidden" id="lc-recorrente-hidden" value="false">
     </div>
     <div class="field hide" id="lc-periodicidade-wrap">
       <label>Repete a cada</label>
@@ -429,6 +443,15 @@ label{font-size:10.5px;color:var(--mu);margin-bottom:5px;display:block;font-weig
         <button class="chip" data-v="trimestral" onclick="lcSetChip('lc-periodicidade',this)">Trimestral</button>
       </div>
       <input type="hidden" id="lc-periodicidade" value="mensal">
+    </div>
+    <div class="field">
+      <label>Categoria (pra análise de desempenho)</label>
+      <div class="chip-row" id="lc-categoria-chips"></div>
+      <input type="hidden" id="lc-categoria" value="Outros">
+    </div>
+    <div class="field">
+      <label>Custo estimado (opcional — material + mão de obra)</label>
+      <input id="lc-custo" type="number" step="0.01" placeholder="0,00">
     </div>
     <div class="field">
       <label>Observação (opcional)</label>
@@ -709,47 +732,8 @@ function initApp(user){
   seedDadosReais();
   seedEntradasHistoricas();
   seedAtualizacaoJulho();
-  rolarRecorrentes();
+  seedCategoriasRetroativas();
   renderAll();
-}
-
-// ═══════════════════════════════════════════════
-// ROLLOVER — gera automaticamente a próxima cobrança de cada contrato recorrente
-// quando a data da última ocorrência já passou. Roda no máximo uma vez por dia.
-// ═══════════════════════════════════════════════
-function avancarDataPeriodicidade(dataStr, periodicidade){
-  const d = new Date(dataStr+'T00:00:00');
-  if(periodicidade==='quinzenal') d.setDate(d.getDate()+15);
-  else if(periodicidade==='bimestral') d.setMonth(d.getMonth()+2);
-  else if(periodicidade==='trimestral') d.setMonth(d.getMonth()+3);
-  else d.setMonth(d.getMonth()+1); // mensal (padrão)
-  return d.toISOString().split('T')[0];
-}
-function rolarRecorrentes(){
-  const hojeStr = today();
-  if(!store.config) store.config = {};
-  if(store.config.lastRolloverCheck === hojeStr) return; // já checado hoje
-
-  const series = {};
-  store.lancamentos.forEach(l=>{
-    if(!l.recorrente || l.status==='cancelado') return;
-    const key = l.cliente+'|'+l.servico;
-    if(!series[key] || l.data > series[key].data) series[key] = l;
-  });
-  let criouAlgum = false;
-  Object.values(series).forEach(l=>{
-    if(l.data < hojeStr){
-      store.lancamentos.push({
-        id: uid(), cliente:l.cliente, servico:l.servico, orc:l.orc||'',
-        valor:l.valor, data: avancarDataPeriodicidade(l.data, l.periodicidade),
-        statusPag:'pendente', forma:l.forma, status:'agendado',
-        recorrente:true, periodicidade:l.periodicidade, obs:'', criadoEm: Date.now()
-      });
-      criouAlgum = true;
-    }
-  });
-  store.config.lastRolloverCheck = hojeStr;
-  if(criouAlgum) saveStore();
 }
 
 // ═══════════════════════════════════════════════
@@ -905,6 +889,34 @@ function seedAtualizacaoJulho(){
   showToast('Atualizações de julho aplicadas');
 }
 
+// ═══════════════════════════════════════════════
+// SEED — atribui categoria retroativamente aos lançamentos já existentes (antes do campo categoria existir)
+// ═══════════════════════════════════════════════
+function seedCategoriasRetroativas(){
+  if(store.config && store.config.seedCategoriasV1) return; // já rodou
+  if(!store.config) store.config = {};
+  if(!store.config.categoriasCustom) store.config.categoriasCustom = [];
+
+  const mapaClienteCategoria = {
+    'EMUSA':'Manutenção preventiva', 'GranCoffee':'Manutenção preventiva', 'Clínica Bellart':'Manutenção preventiva',
+    'Maxime Office Tower':'Manutenção preventiva', 'SL Alimentos':'Manutenção preventiva', 'Maria Luize Queiroz':'Manutenção preventiva',
+    'Welton Rodrigues More':'Manutenção preventiva', 'José Henrique Paraguay':'Manutenção preventiva',
+    'Kelly Christina Franco de Oliveira':'Manutenção preventiva', 'StrategyBox Marketing':'Comissão/Terceiros'
+  };
+  let precisaSalvar = false;
+  store.lancamentos.forEach(l=>{
+    if(l.categoria) return; // já tem
+    precisaSalvar = true;
+    if(l.servico==='Higienização'){ l.categoria='Higienização'; return; }
+    if(l.servico && l.servico.toLowerCase().includes('instala')){ l.categoria='Instalação'; return; }
+    if(mapaClienteCategoria[l.cliente]){ l.categoria=mapaClienteCategoria[l.cliente]; return; }
+    l.categoria='Outros';
+    if(l.custo===undefined) l.custo = 0;
+  });
+  store.config.seedCategoriasV1 = true;
+  saveStore();
+}
+
 // ── TABS ─────────────────────────────────────────
 let currentTab = 'dashboard';
 function switchTab(id){
@@ -940,7 +952,7 @@ function renderMesFocoLabels(){
   let label = new Date(y,m-1,1).toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
   label = label.charAt(0).toUpperCase()+label.slice(1);
   const ehAtual = mesFoco===todayMonth();
-  ['dash','ent','desp'].forEach(suf=>{
+  ['dash','ent','desp','analise'].forEach(suf=>{
     const el = document.getElementById('mesfoco-lbl-'+suf);
     if(el) el.textContent = label;
     const hojeBtn = document.getElementById('mesfoco-hoje-'+suf);
@@ -954,6 +966,7 @@ function renderAll(){
   renderAgenda();
   renderEntradas();
   renderDespesas();
+  renderAnalise();
 }
 
 // ── MODAL HELPERS ─────────────────────────────────
@@ -981,8 +994,39 @@ function lcPickServico(s, btn){
 }
 function lcClearChips(){ document.getElementById('lc-servico-chips').querySelectorAll('.chip').forEach(c=>c.classList.remove('active')); }
 
-function lcToggleRecorrente(){
-  document.getElementById('lc-periodicidade-wrap').classList.toggle('hide', !document.getElementById('lc-recorrente').checked);
+function setTipoServicoUI(isRecorrente){
+  const wrap = document.getElementById('lc-tipo-chips');
+  wrap.querySelectorAll('.chip').forEach(c=>c.classList.toggle('active', (c.dataset.v==='recorrente')===isRecorrente));
+  document.getElementById('lc-recorrente-hidden').value = isRecorrente ? 'true' : 'false';
+  document.getElementById('lc-periodicidade-wrap').classList.toggle('hide', !isRecorrente);
+}
+
+const CATEGORIAS_BASE = ['Manutenção preventiva','Corretiva','Instalação','Higienização','Comissão/Terceiros','Outros'];
+function todasCategorias(){
+  const custom = (store.config && store.config.categoriasCustom) || [];
+  return [...CATEGORIAS_BASE, ...custom.filter(c=>!CATEGORIAS_BASE.includes(c))];
+}
+function buildCategoriaChips(selecionada){
+  const wrap = document.getElementById('lc-categoria-chips');
+  const cats = todasCategorias();
+  wrap.innerHTML = cats.map(c=>`<button type="button" class="chip ${c===selecionada?'active':''}" onclick="lcPickCategoria('${c.replace(/'/g,"\\'")}',this)">${c}</button>`).join('')
+    + `<button type="button" class="chip" style="border-style:dashed" onclick="lcNovaCategoria()">+ nova</button>`;
+}
+function lcPickCategoria(c, btn){
+  document.getElementById('lc-categoria').value = c;
+  btn.parentElement.querySelectorAll('.chip').forEach(x=>x.classList.remove('active'));
+  btn.classList.add('active');
+}
+function lcNovaCategoria(){
+  const nome = prompt('Nome da nova categoria:');
+  if(!nome || !nome.trim()) return;
+  const n = nome.trim();
+  if(!store.config) store.config = {};
+  if(!store.config.categoriasCustom) store.config.categoriasCustom = [];
+  if(!store.config.categoriasCustom.includes(n) && !CATEGORIAS_BASE.includes(n)) store.config.categoriasCustom.push(n);
+  saveStore();
+  buildCategoriaChips(n);
+  document.getElementById('lc-categoria').value = n;
 }
 
 function lcResetForm(){
@@ -992,23 +1036,23 @@ function lcResetForm(){
   document.getElementById('lc-orc').value='';
   document.getElementById('lc-valor').value='';
   document.getElementById('lc-data').value = today();
+  document.getElementById('lc-custo').value='';
   document.getElementById('lc-obs').value='';
-  document.getElementById('lc-recorrente').checked=false;
-  document.getElementById('lc-periodicidade-wrap').classList.add('hide');
+  setTipoServicoUI(false);
   document.getElementById('lc-btn-del').classList.add('hide');
   document.getElementById('lc-suggest').classList.remove('show');
-  ['lc-statuspag','lc-forma','lc-status','lc-periodicidade'].forEach(id=>{
-    const wrap = document.getElementById(id).previousElementSibling;
-  });
   // reset chip visuals
   document.querySelectorAll('#modal-lanc .chip-row').forEach(row=>{
+    if(row.id==='lc-categoria-chips') return; // tratado separadamente
     row.querySelectorAll('.chip').forEach((c,i)=>c.classList.toggle('active', i===0));
   });
   document.getElementById('lc-statuspag').value='pendente';
   document.getElementById('lc-forma').value='infinitpay';
   document.getElementById('lc-status').value='agendado';
   document.getElementById('lc-periodicidade').value='mensal';
+  document.getElementById('lc-categoria').value='Outros';
   buildServicoChips();
+  buildCategoriaChips('Outros');
 }
 
 function lcClienteInput(){
@@ -1052,15 +1096,15 @@ function lcEditar(id){
   document.getElementById('lc-orc').value = l.orc||'';
   document.getElementById('lc-valor').value = l.valor||'';
   document.getElementById('lc-data').value = l.data||today();
+  document.getElementById('lc-custo').value = l.custo||'';
   document.getElementById('lc-obs').value = l.obs||'';
   setChipValue('lc-statuspag', l.statusPag||'pendente');
   setChipValue('lc-forma', l.forma||'infinitpay');
   setChipValue('lc-status', l.status||'agendado');
-  if(l.recorrente){
-    document.getElementById('lc-recorrente').checked = true;
-    document.getElementById('lc-periodicidade-wrap').classList.remove('hide');
-    setChipValue('lc-periodicidade', l.periodicidade||'mensal');
-  }
+  setTipoServicoUI(!!l.recorrente);
+  if(l.recorrente) setChipValue('lc-periodicidade', l.periodicidade||'mensal');
+  buildCategoriaChips(l.categoria||'Outros');
+  document.getElementById('lc-categoria').value = l.categoria||'Outros';
   document.getElementById('lc-btn-del').classList.remove('hide');
   openModal('modal-lanc');
 }
@@ -1086,8 +1130,10 @@ function lcSalvar(){
     statusPag: document.getElementById('lc-statuspag').value,
     forma: document.getElementById('lc-forma').value,
     status: document.getElementById('lc-status').value,
-    recorrente: document.getElementById('lc-recorrente').checked,
+    recorrente: document.getElementById('lc-recorrente-hidden').value === 'true',
     periodicidade: document.getElementById('lc-periodicidade').value,
+    categoria: document.getElementById('lc-categoria').value || 'Outros',
+    custo: parseFloat(document.getElementById('lc-custo').value||0),
     obs: document.getElementById('lc-obs').value.trim(),
     criadoEm: Date.now()
   };
@@ -1301,14 +1347,57 @@ function labelForma(f){ return {infinitpay:'Infinitpay',boleto:'Boleto',pix:'Pix
 // ═══════════════════════════════════════════════
 // ENTRADAS
 // ═══════════════════════════════════════════════
-let entTab = 'infinit';
+let entTab = 'avulsos';
+let entFiltroForma = 'todos';
+let recFiltroForma = 'todos';
 function entSetTab(t){
   entTab = t;
-  ['infinit','boleto','fixo'].forEach(k=>document.getElementById('ent-tab-'+k).classList.toggle('active', k===t));
+  ['avulsos','fixo'].forEach(k=>document.getElementById('ent-tab-'+k).classList.toggle('active', k===t));
   renderEntradas();
 }
+function entSetFiltroForma(f){ entFiltroForma = f; renderEntradas(); }
+function recSetFiltroForma(f){ recFiltroForma = f; renderEntradas(); }
+
+function avancarDataPeriodicidade(dataStr, periodicidade){
+  const d = new Date(dataStr+'T00:00:00');
+  if(periodicidade==='quinzenal') d.setDate(d.getDate()+15);
+  else if(periodicidade==='bimestral') d.setMonth(d.getMonth()+2);
+  else if(periodicidade==='trimestral') d.setMonth(d.getMonth()+3);
+  else d.setMonth(d.getMonth()+1); // mensal (padrão)
+  return d.toISOString().split('T')[0];
+}
+// Garante e retorna a ocorrência de um contrato recorrente para um mês específico,
+// projetando (e persistindo) as próximas ocorrências automaticamente se necessário.
+function ocorrenciaParaMes(cliente, servico, mesAlvo){
+  let candidatos = store.lancamentos.filter(l=>l.recorrente && l.cliente===cliente && l.servico===servico && l.status!=='cancelado');
+  if(!candidatos.length) return null;
+  candidatos.sort((a,b)=>(a.data||'').localeCompare(b.data||''));
+  let ultimo = candidatos[candidatos.length-1];
+  let criouAlgum = false, tentativas = 0;
+  while(ultimo.data.slice(0,7) < mesAlvo && tentativas < 36){
+    const novo = {
+      id: uid(), cliente:ultimo.cliente, servico:ultimo.servico, orc:ultimo.orc||'',
+      valor:ultimo.valor, data: avancarDataPeriodicidade(ultimo.data, ultimo.periodicidade),
+      statusPag:'pendente', forma:ultimo.forma, status:'agendado',
+      recorrente:true, periodicidade:ultimo.periodicidade,
+      categoria:ultimo.categoria||'Manutenção preventiva', custo:ultimo.custo||0,
+      obs:'', criadoEm: Date.now()
+    };
+    store.lancamentos.push(novo);
+    ultimo = novo; criouAlgum = true; tentativas++;
+  }
+  if(criouAlgum) saveStore();
+  return store.lancamentos.filter(l=>l.recorrente && l.cliente===cliente && l.servico===servico && l.status!=='cancelado' && dentroDoMes(l.data,mesAlvo)).sort((a,b)=>(a.data||'').localeCompare(b.data||''))[0] || null;
+}
+
 function renderEntradas(){
   const mes = mesFoco;
+
+  // garante que todo contrato conhecido já tenha uma ocorrência gerada pro mês em foco
+  const seriesConhecidas = {};
+  store.lancamentos.forEach(l=>{ if(l.recorrente && l.status!=='cancelado') seriesConhecidas[l.cliente+'|'+l.servico] = l; });
+  Object.values(seriesConhecidas).forEach(l=> ocorrenciaParaMes(l.cliente, l.servico, mes));
+
   const recebidoMes = store.lancamentos.filter(l=>l.statusPag==='pago' && dentroDoMes(l.data,mes)).reduce((s,l)=>s+parseFloat(l.valor||0),0);
   const pendenteMes = store.lancamentos.filter(l=>l.statusPag==='pendente' && l.status!=='cancelado' && dentroDoMes(l.data,mes)).reduce((s,l)=>s+parseFloat(l.valor||0),0);
   const pendenteTotalGeral = store.lancamentos.filter(l=>l.statusPag==='pendente' && l.status!=='cancelado').reduce((s,l)=>s+parseFloat(l.valor||0),0);
@@ -1318,35 +1407,31 @@ function renderEntradas(){
   document.getElementById('ent-total-geral').textContent = `Total pendente (todos os meses): ${R(pendenteTotalGeral)}`;
 
   const body = document.getElementById('ent-body');
-  if(entTab==='infinit'){
-    const pendentes = store.lancamentos.filter(l=>l.forma==='infinitpay' && l.statusPag==='pendente' && l.status!=='cancelado' && parseFloat(l.valor)>0);
-    body.innerHTML = `
-      <button class="btn btn-primary" style="margin-bottom:14px" onclick="ccAbrir()">+ Lançar valor recebido</button>
-      <div class="card"><div class="card-title">Aguardando recebimento <span class="sub">${pendentes.length}</span></div>
-      ${pendentes.length ? pendentes.map(l=>`<div class="mini-row st-pendente"><div class="mini-l"><b>${l.cliente}</b><span>${l.servico} · ${fmtDateBR(l.data)}</span></div><div class="mini-r"><span class="tag tag-pendente">Pendente</span><br><b>${R(l.valor)}</b></div></div>`).join('') : '<div class="empty-msg">Nada pendente na Infinitpay</div>'}
-      </div>
-      <div class="card"><div class="card-title">Recebimentos lançados no mês</div>
-      ${store.recebimentos.filter(r=>dentroDoMes(r.data,mes)).length ? [...store.recebimentos].filter(r=>dentroDoMes(r.data,mes)).sort((a,b)=>(b.data||'').localeCompare(a.data||'')).map(r=>{
-        const nomes = r.lancamentoIds.map(id=>{ const l=store.lancamentos.find(x=>x.id===id); return l?l.cliente:null; }).filter(Boolean);
-        return `<div class="mini-row st-pago"><div class="mini-l"><b>${fmtDateBR(r.data)}</b><span>${nomes.length ? nomes.join(', ') : r.lancamentoIds.length+' serviço(s)'}</span></div><div class="mini-r"><span class="tag tag-pago">Recebido</span><br><b>${R(r.valor)}</b></div></div>`;
-      }).join('') : '<div class="empty-msg">Nenhum recebimento nesse mês</div>'}
-      </div>`;
-  } else if(entTab==='boleto'){
-    const pendentes = store.lancamentos.filter(l=>l.forma!=='infinitpay' && !l.recorrente && l.statusPag==='pendente' && l.status!=='cancelado' && parseFloat(l.valor)>0);
-    const pagos = store.lancamentos.filter(l=>l.forma!=='infinitpay' && !l.recorrente && l.statusPag==='pago' && parseFloat(l.valor)>0 && dentroDoMes(l.data,mes)).sort((a,b)=>(b.data||'').localeCompare(a.data||''));
-    body.innerHTML = `<div class="card"><div class="card-title">Avulsos aguardando confirmação <span class="sub">${pendentes.length}</span></div>
-      ${pendentes.length ? pendentes.map(l=>`<div class="mini-row st-pendente"><div class="mini-l"><b>${l.cliente}</b><span>${l.servico} · ${fmtDateBR(l.data)} · ${labelForma(l.forma)}</span></div><div class="mini-r"><b>${R(l.valor)}</b>${stToggleHtml(l)}</div></div>`).join('') : '<div class="empty-msg">Nenhum avulso pendente</div>'}
+  if(entTab==='avulsos'){
+    const formaOpts = [['todos','Todos'],['infinitpay','Infinitpay'],['pix','Pix'],['dinheiro','Dinheiro'],['boleto','Boleto']];
+    const filtroHtml = `<div class="chip-row" style="margin-bottom:12px">${formaOpts.map(([v,l])=>`<button class="chip ${entFiltroForma===v?'active':''}" onclick="entSetFiltroForma('${v}')">${l}</button>`).join('')}</div>`;
+    let pendentes = store.lancamentos.filter(l=>!l.recorrente && l.statusPag==='pendente' && l.status!=='cancelado' && parseFloat(l.valor)>0);
+    let pagos = store.lancamentos.filter(l=>!l.recorrente && l.statusPag==='pago' && parseFloat(l.valor)>0 && dentroDoMes(l.data,mes));
+    if(entFiltroForma!=='todos'){ pendentes = pendentes.filter(l=>l.forma===entFiltroForma); pagos = pagos.filter(l=>l.forma===entFiltroForma); }
+    pagos.sort((a,b)=>(b.data||'').localeCompare(a.data||''));
+    const botaoConciliacao = entFiltroForma==='infinitpay' ? `<button class="btn btn-outline" style="margin-bottom:14px" onclick="ccAbrir()">+ Lançar valor recebido (bater vários de uma vez)</button>` : '';
+    const conciliacoesMes = store.recebimentos.filter(r=>dentroDoMes(r.data,mes));
+    body.innerHTML = `${filtroHtml}${botaoConciliacao}
+      <div class="card"><div class="card-title">Aguardando confirmação <span class="sub">${pendentes.length}</span></div>
+      ${pendentes.length ? pendentes.map(l=>`<div class="mini-row st-pendente"><div class="mini-l"><b>${l.cliente}</b><span>${l.servico} · ${fmtDateBR(l.data)} · ${labelForma(l.forma)}</span></div><div class="mini-r"><b>${R(l.valor)}</b>${stToggleHtml(l)}</div></div>`).join('') : '<div class="empty-msg">Nada pendente</div>'}
       </div>
       <div class="card"><div class="card-title">Recebidos no mês</div>
-      ${pagos.length ? pagos.map(l=>`<div class="mini-row st-pago"><div class="mini-l"><b>${l.cliente}</b><span>${l.servico} · ${fmtDateBR(l.data)} · ${labelForma(l.forma)}</span></div><div class="mini-r"><b>${R(l.valor)}</b>${stToggleHtml(l)}</div></div>`).join('') : '<div class="empty-msg">Nenhum avulso recebido nesse mês</div>'}
-      </div>`;
+      ${pagos.length ? pagos.map(l=>`<div class="mini-row st-pago"><div class="mini-l"><b>${l.cliente}</b><span>${l.servico} · ${fmtDateBR(l.data)} · ${labelForma(l.forma)}</span></div><div class="mini-r"><b>${R(l.valor)}</b>${stToggleHtml(l)}</div></div>`).join('') : '<div class="empty-msg">Nenhum recebido nesse mês</div>'}
+      </div>
+      ${entFiltroForma==='infinitpay' && conciliacoesMes.length ? `<div class="card"><div class="card-title">Conciliações lançadas no mês</div>${conciliacoesMes.sort((a,b)=>(b.data||'').localeCompare(a.data||'')).map(r=>{ const nomes=r.lancamentoIds.map(id=>{const l=store.lancamentos.find(x=>x.id===id);return l?l.cliente:null;}).filter(Boolean); return `<div class="mini-row st-pago"><div class="mini-l"><b>${fmtDateBR(r.data)}</b><span>${nomes.join(', ')}</span></div><div class="mini-r"><b>${R(r.valor)}</b></div></div>`; }).join('')}</div>` : ''}`;
   } else {
-    const recorrentes = store.lancamentos.filter(l=>l.recorrente && l.status!=='cancelado');
-    const porSerie = {};
-    recorrentes.forEach(l=>{ const key=l.cliente+'|'+l.servico; if(!porSerie[key] || l.data>porSerie[key].data) porSerie[key]=l; });
-    const lista = Object.values(porSerie).sort((a,b)=>(a.data||'').localeCompare(b.data||''));
-    body.innerHTML = `<p style="font-size:11px;color:var(--mu);margin-bottom:10px;">Toque num contrato pra editar valor, dia ou forma de pagamento.</p><div class="card"><div class="card-title">Contratos / recorrentes <span class="sub">${lista.length}</span></div>
-      ${lista.length ? lista.map(l=>`<div class="mini-row st-${l.statusPag}" style="cursor:pointer" onclick="lcEditar('${l.id}')"><div class="mini-l"><b>${l.cliente}</b><span>${l.servico} · a cada ${l.periodicidade} · próx. ${fmtDateBR(l.data)} · ${labelForma(l.forma)}</span></div><div class="mini-r"><b>${R(l.valor)}</b>${stToggleHtml(l)}</div></div>`).join('') : '<div class="empty-msg">Nenhum recorrente cadastrado — marque "é recorrente" ao criar um lançamento</div>'}
+    const formaOpts = [['todos','Todos'],['boleto','Faturados'],['infinitpay','Infinitpay']];
+    const filtroHtml = `<div class="chip-row" style="margin-bottom:12px">${formaOpts.map(([v,l])=>`<button class="chip ${recFiltroForma===v?'active':''}" onclick="recSetFiltroForma('${v}')">${l}</button>`).join('')}</div>`;
+    let linhas = Object.values(seriesConhecidas).map(l=>ocorrenciaParaMes(l.cliente, l.servico, mes)).filter(Boolean);
+    if(recFiltroForma!=='todos') linhas = linhas.filter(l=>l.forma===recFiltroForma);
+    linhas.sort((a,b)=>(a.data||'').localeCompare(b.data||''));
+    body.innerHTML = `<p style="font-size:11px;color:var(--mu);margin-bottom:10px;">Toque num contrato pra editar valor, dia ou forma de pagamento.</p>${filtroHtml}<div class="card"><div class="card-title">Contratos com cobrança nesse mês <span class="sub">${linhas.length}</span></div>
+      ${linhas.length ? linhas.map(l=>`<div class="mini-row st-${l.statusPag}" style="cursor:pointer" onclick="lcEditar('${l.id}')"><div class="mini-l"><b>${l.cliente}</b><span>${l.servico} · ${fmtDateBR(l.data)} · ${labelForma(l.forma)}</span></div><div class="mini-r"><b>${R(l.valor)}</b>${stToggleHtml(l)}</div></div>`).join('') : '<div class="empty-msg">Nenhum contrato com cobrança nesse mês</div>'}
       </div>`;
   }
 }
@@ -1528,6 +1613,49 @@ function alExcluir(id){
   if(!confirm('Remover alerta?')) return;
   store.alertas = store.alertas.filter(a=>a.id!==id);
   saveStore(); renderAll();
+}
+
+// ═══════════════════════════════════════════════
+// ANÁLISE — desempenho por categoria de serviço (faturamento, ticket médio, lucro quando há custo)
+// ═══════════════════════════════════════════════
+function renderAnalise(){
+  const mes = mesFoco;
+  const relevantes = store.lancamentos.filter(l=>l.status!=='cancelado' && dentroDoMes(l.data,mes) && parseFloat(l.valor)>0);
+  const porCategoria = {};
+  relevantes.forEach(l=>{
+    const cat = l.categoria || 'Outros';
+    if(!porCategoria[cat]) porCategoria[cat] = { qtd:0, faturamento:0, custo:0 };
+    porCategoria[cat].qtd++;
+    porCategoria[cat].faturamento += parseFloat(l.valor||0);
+    porCategoria[cat].custo += parseFloat(l.custo||0);
+  });
+  const totalFat = Object.values(porCategoria).reduce((s,c)=>s+c.faturamento,0);
+  const linhas = Object.entries(porCategoria).map(([cat,d])=>({
+    cat, ...d,
+    ticket: d.qtd ? d.faturamento/d.qtd : 0,
+    lucro: d.faturamento - d.custo,
+    pct: totalFat ? (d.faturamento/totalFat*100) : 0
+  })).sort((a,b)=>b.faturamento-a.faturamento);
+
+  const body = document.getElementById('analise-body');
+  if(!linhas.length){ body.innerHTML = '<div class="empty-msg">Nenhum serviço lançado nesse mês ainda</div>'; return; }
+
+  body.innerHTML = `
+    <div class="card">
+      <div class="card-title">Faturamento por categoria <span class="sub">${R(totalFat)} no mês</span></div>
+      ${linhas.map(l=>`
+        <div style="margin-bottom:18px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+            <b style="font-size:12.5px">${l.cat}</b><b style="font-size:12.5px">${R(l.faturamento)}</b>
+          </div>
+          <div class="azul-track" style="height:7px"><div class="azul-fill ok" style="width:${l.pct}%"></div></div>
+          <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:10px;color:var(--mu)">
+            <span>${l.qtd} serviço${l.qtd>1?'s':''} · ticket médio ${R(l.ticket)}</span>
+            <span>${l.pct.toFixed(0)}% do total${l.custo>0 ? ' · lucro '+R(l.lucro) : ''}</span>
+          </div>
+        </div>`).join('')}
+    </div>
+    <p style="font-size:10.5px;color:var(--mu);text-align:center;">Lucro só aparece quando você preenche o custo estimado no lançamento.</p>`;
 }
 
 function renderDespesas(){
