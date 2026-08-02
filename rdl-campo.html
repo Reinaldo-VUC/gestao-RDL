@@ -421,6 +421,12 @@ label{font-size:10.5px;color:var(--mu);margin-bottom:5px;display:block;font-weig
       </div>
       <input type="hidden" id="lc-forma" value="infinitpay">
     </div>
+    <div class="field hide" id="lc-liquido-info-wrap">
+      <div class="suggest-box show" style="background:rgba(255,184,0,.06);border-color:rgba(255,184,0,.25)">
+        <span id="lc-liquido-info-txt" style="color:var(--yw)"></span>
+        <button type="button" class="btn btn-outline btn-sm" onclick="clAbrirDoModal()">Ajustar</button>
+      </div>
+    </div>
     <div class="field">
       <label>Status do atendimento</label>
       <div class="chip-row">
@@ -552,6 +558,21 @@ label{font-size:10.5px;color:var(--mu);margin-bottom:5px;display:block;font-weig
     <div class="field"><label>Texto</label><textarea id="al-texto" rows="2" placeholder="Ex: Contrato SL Alimentos encerra"></textarea></div>
     <div class="field"><label>Data (opcional)</label><input id="al-data" type="date"></div>
     <div class="modal-actions"><button class="btn btn-primary" onclick="alSalvar()">Salvar alerta</button></div>
+  </div>
+</div>
+
+<!-- MODAL: CONFIRMAR VALOR LÍQUIDO -->
+<div class="modal-bg" id="modal-confirma-liquido">
+  <div class="modal">
+    <div class="modal-hdr"><h3>Confirmar recebimento</h3><button class="modal-close" onclick="clFechar()">✕</button></div>
+    <p id="cl-info" style="font-size:12px;color:var(--mu);margin-bottom:14px;"></p>
+    <div class="field"><label>Valor líquido recebido (R$)</label><input id="cl-liquido" type="number" step="0.01" oninput="clRecalc()"></div>
+    <div class="suggest-box show" style="background:rgba(255,184,0,.06);border-color:rgba(255,184,0,.25)">
+      <span id="cl-resultado" style="color:var(--yw)"></span>
+    </div>
+    <p style="font-size:10.5px;color:var(--mu);margin-top:10px;">A diferença vira automaticamente uma despesa "Taxa maquininha" na sua aba Despesas.</p>
+    <input type="hidden" id="cl-lanc-id">
+    <div class="modal-actions"><button class="btn btn-primary" onclick="clConfirmar()">Confirmar recebimento</button></div>
   </div>
 </div>
 
@@ -982,6 +1003,11 @@ function lcSetChip(hiddenId, btn){
   btn.classList.add('active');
   document.getElementById(hiddenId).value = btn.dataset.v;
 }
+function highlightChip(chipsWrapId, val){
+  const wrap = document.getElementById(chipsWrapId);
+  if(!wrap) return;
+  wrap.querySelectorAll('.chip').forEach(c=>c.classList.toggle('active', c.dataset.v===val));
+}
 
 // ═══════════════════════════════════════════════
 // LANÇAMENTO ÚNICO
@@ -1052,6 +1078,7 @@ function lcResetForm(){
   });
   document.getElementById('lc-statuspag').value='pendente';
   document.getElementById('lc-forma').value='infinitpay';
+  document.getElementById('lc-liquido-info-wrap').classList.add('hide');
   document.getElementById('lc-status').value='agendado';
   document.getElementById('lc-periodicidade').value='mensal';
   document.getElementById('lc-categoria').value='Outros';
@@ -1104,6 +1131,13 @@ function lcEditar(id){
   document.getElementById('lc-obs').value = l.obs||'';
   setChipValue('lc-statuspag', l.statusPag||'pendente');
   setChipValue('lc-forma', l.forma||'infinitpay');
+  const isPagoInfinit = l.forma==='infinitpay' && l.statusPag==='pago';
+  document.getElementById('lc-liquido-info-wrap').classList.toggle('hide', !isPagoInfinit);
+  if(isPagoInfinit){
+    document.getElementById('lc-liquido-info-txt').textContent = l.liquidoConfirmado
+      ? `Líquido recebido: ${R(l.valorLiquido)} · Taxa maquininha: ${R(l.valor-l.valorLiquido)} (${(l.taxaPct||0).toFixed(2)}%)`
+      : 'Ainda não confirmado quanto caiu líquido.';
+  }
   setChipValue('lc-status', l.status||'agendado');
   setTipoServicoUI(!!l.recorrente);
   if(l.recorrente) setChipValue('lc-periodicidade', l.periodicidade||'mensal');
@@ -1126,13 +1160,15 @@ function lcSalvar(){
   if(!cliente){ showToast('Informe o cliente'); return; }
   if(!valor){ showToast('Informe o valor'); return; }
   const id = document.getElementById('lc-id').value || uid();
+  const forma = document.getElementById('lc-forma').value;
+  const statusPag = document.getElementById('lc-statuspag').value;
   const obj = {
     id, cliente,
     servico: document.getElementById('lc-servico').value.trim()||'Serviço',
     orc: document.getElementById('lc-orc').value.trim(),
     valor, data: document.getElementById('lc-data').value || today(),
-    statusPag: document.getElementById('lc-statuspag').value,
-    forma: document.getElementById('lc-forma').value,
+    statusPag,
+    forma,
     status: document.getElementById('lc-status').value,
     recorrente: document.getElementById('lc-recorrente-hidden').value === 'true',
     periodicidade: document.getElementById('lc-periodicidade').value,
@@ -1142,10 +1178,20 @@ function lcSalvar(){
     criadoEm: Date.now()
   };
   const idx = store.lancamentos.findIndex(l=>l.id===id);
-  if(idx>=0) store.lancamentos[idx] = {...store.lancamentos[idx], ...obj};
-  else store.lancamentos.push(obj);
+  if(idx>=0){
+    store.lancamentos[idx] = {...store.lancamentos[idx], ...obj};
+  } else {
+    obj.valorLiquido = valor; obj.taxaPct = 0; obj.liquidoConfirmado = false;
+    store.lancamentos.push(obj);
+  }
   saveStore();
   closeModal('modal-lanc');
+  const saved = store.lancamentos.find(l=>l.id===id);
+  if(forma==='infinitpay' && statusPag==='pago' && saved && !saved.liquidoConfirmado){
+    renderAll();
+    clAbrir(id);
+    return;
+  }
   showToast('Lançamento salvo');
   renderAll();
 }
@@ -1383,6 +1429,7 @@ function ocorrenciaParaMes(cliente, servico, mesAlvo){
       id: uid(), cliente:ultimo.cliente, servico:ultimo.servico, orc:ultimo.orc||'',
       valor:ultimo.valor, data: avancarDataPeriodicidade(ultimo.data, ultimo.periodicidade),
       statusPag:'pendente', forma:ultimo.forma, status:'agendado',
+      valorLiquido: ultimo.valor, taxaPct: 0, liquidoConfirmado: false,
       recorrente:true, periodicidade:ultimo.periodicidade,
       categoria:ultimo.categoria||'Manutenção preventiva', custo:ultimo.custo||0,
       obs:'', criadoEm: Date.now()
@@ -1422,10 +1469,10 @@ function renderEntradas(){
     const conciliacoesMes = store.recebimentos.filter(r=>dentroDoMes(r.data,mes));
     body.innerHTML = `${filtroHtml}${botaoConciliacao}
       <div class="card"><div class="card-title">Aguardando confirmação <span class="sub">${pendentes.length}</span></div>
-      ${pendentes.length ? pendentes.map(l=>`<div class="mini-row st-pendente" style="cursor:pointer" onclick="lcEditar('${l.id}')"><div class="mini-l"><b>${l.cliente}</b><span>${l.servico} · ${fmtDateBR(l.data)} · ${labelForma(l.forma)}</span></div><div class="mini-r"><b>${R(l.valor)}</b>${stToggleHtml(l)}</div></div>`).join('') : '<div class="empty-msg">Nada pendente</div>'}
+      ${pendentes.length ? pendentes.map(l=>`<div class="mini-row st-pendente" style="cursor:pointer" onclick="lcEditar('${l.id}')"><div class="mini-l"><b>${l.cliente}</b><span>${l.servico} · ${fmtDateBR(l.data)} · ${labelForma(l.forma)}</span></div><div class="mini-r"><b>${R(l.valor)}</b>${liquidoAnotacao(l)}${stToggleHtml(l)}</div></div>`).join('') : '<div class="empty-msg">Nada pendente</div>'}
       </div>
       <div class="card"><div class="card-title">Recebidos no mês</div>
-      ${pagos.length ? pagos.map(l=>`<div class="mini-row st-pago" style="cursor:pointer" onclick="lcEditar('${l.id}')"><div class="mini-l"><b>${l.cliente}</b><span>${l.servico} · ${fmtDateBR(l.data)} · ${labelForma(l.forma)}</span></div><div class="mini-r"><b>${R(l.valor)}</b>${stToggleHtml(l)}</div></div>`).join('') : '<div class="empty-msg">Nenhum recebido nesse mês</div>'}
+      ${pagos.length ? pagos.map(l=>`<div class="mini-row st-pago" style="cursor:pointer" onclick="lcEditar('${l.id}')"><div class="mini-l"><b>${l.cliente}</b><span>${l.servico} · ${fmtDateBR(l.data)} · ${labelForma(l.forma)}</span></div><div class="mini-r"><b>${R(l.valor)}</b>${liquidoAnotacao(l)}${stToggleHtml(l)}</div></div>`).join('') : '<div class="empty-msg">Nenhum recebido nesse mês</div>'}
       </div>
       ${entFiltroForma==='infinitpay' && conciliacoesMes.length ? `<div class="card"><div class="card-title">Conciliações lançadas no mês</div>${conciliacoesMes.sort((a,b)=>(b.data||'').localeCompare(a.data||'')).map(r=>{ const nomes=r.lancamentoIds.map(id=>{const l=store.lancamentos.find(x=>x.id===id);return l?l.cliente:null;}).filter(Boolean); return `<div class="mini-row st-pago"><div class="mini-l"><b>${fmtDateBR(r.data)}</b><span>${nomes.join(', ')}</span></div><div class="mini-r"><b>${R(r.valor)}</b></div></div>`; }).join('')}</div>` : ''}`;
   } else {
@@ -1435,7 +1482,7 @@ function renderEntradas(){
     if(recFiltroForma!=='todos') linhas = linhas.filter(l=>l.forma===recFiltroForma);
     linhas.sort((a,b)=>(a.data||'').localeCompare(b.data||''));
     body.innerHTML = `<p style="font-size:11px;color:var(--mu);margin-bottom:10px;">Toque num contrato pra editar valor, dia ou forma de pagamento.</p>${filtroHtml}<div class="card"><div class="card-title">Contratos com cobrança nesse mês <span class="sub">${linhas.length}</span></div>
-      ${linhas.length ? linhas.map(l=>`<div class="mini-row st-${l.statusPag}" style="cursor:pointer" onclick="lcEditar('${l.id}')"><div class="mini-l"><b>${l.cliente}</b><span>${l.servico} · ${fmtDateBR(l.data)} · ${labelForma(l.forma)}</span></div><div class="mini-r"><b>${R(l.valor)}</b>${stToggleHtml(l)}</div></div>`).join('') : '<div class="empty-msg">Nenhum contrato com cobrança nesse mês</div>'}
+      ${linhas.length ? linhas.map(l=>`<div class="mini-row st-${l.statusPag}" style="cursor:pointer" onclick="lcEditar('${l.id}')"><div class="mini-l"><b>${l.cliente}</b><span>${l.servico} · ${fmtDateBR(l.data)} · ${labelForma(l.forma)}</span></div><div class="mini-r"><b>${R(l.valor)}</b>${liquidoAnotacao(l)}${stToggleHtml(l)}</div></div>`).join('') : '<div class="empty-msg">Nenhum contrato com cobrança nesse mês</div>'}
       </div>`;
   }
 }
@@ -1445,7 +1492,13 @@ function entMarcarPago(id){
 }
 function entSetStatusPag(id, status){
   const l = store.lancamentos.find(x=>x.id===id); if(!l) return;
-  l.statusPag = status; saveStore(); renderAll();
+  if(status==='pago' && l.forma==='infinitpay'){ clAbrir(id); return; }
+  l.statusPag = status;
+  if(status==='pendente' && l.forma==='infinitpay'){
+    l.valorLiquido = l.valor; l.taxaPct = 0; l.liquidoConfirmado = false;
+    sincronizarTaxaMaquininha(id, 0, l.data, l.cliente);
+  }
+  saveStore(); renderAll();
   showToast(status==='pago' ? 'Marcado como pago' : 'Marcado como pendente');
 }
 function stToggleHtml(l){
@@ -1453,6 +1506,60 @@ function stToggleHtml(l){
     <button class="${l.statusPag==='pendente'?'on-pendente':''}" onclick="entSetStatusPag('${l.id}','pendente')">Pendente</button>
     <button class="${l.statusPag==='pago'?'on-pago':''}" onclick="entSetStatusPag('${l.id}','pago')">Pago</button>
   </div>`;
+}
+function liquidoAnotacao(l){
+  if(l.forma!=='infinitpay' || !l.liquidoConfirmado || !l.taxaPct) return '';
+  return `<div style="font-size:9.5px;color:var(--mu);margin-top:2px">líquido ${R(l.valorLiquido)} (taxa ${l.taxaPct.toFixed(2)}%)</div>`;
+}
+
+// ═══════════════════════════════════════════════
+// CONFIRMAÇÃO DE VALOR LÍQUIDO — Infinitpay
+// A diferença entre valor do serviço e o líquido informado vira despesa "Taxa maquininha" automática
+// ═══════════════════════════════════════════════
+function sincronizarTaxaMaquininha(lancId, diferenca, data, cliente){
+  const existente = store.despesasVar.find(d=>d.origemLancamentoId===lancId);
+  if(diferenca > 0.005){
+    if(existente){ existente.valor = diferenca; existente.data = data; }
+    else store.despesasVar.push({ id:uid(), desc:'Taxa Infinitpay — '+cliente, cat:'Taxa maquininha', valor:diferenca, data, origemLancamentoId:lancId });
+  } else if(existente){
+    store.despesasVar = store.despesasVar.filter(d=>d.id!==existente.id);
+  }
+}
+function clAbrirDoModal(){
+  const id = document.getElementById('lc-id').value;
+  if(!id){ showToast('Salve o lançamento primeiro'); return; }
+  closeModal('modal-lanc');
+  clAbrir(id);
+}
+function clAbrir(id){
+  const l = store.lancamentos.find(x=>x.id===id); if(!l) return;
+  document.getElementById('cl-lanc-id').value = id;
+  document.getElementById('cl-info').textContent = `${l.cliente} — ${l.servico} — valor do serviço: ${R(l.valor)}`;
+  document.getElementById('cl-liquido').value = (l.liquidoConfirmado ? l.valorLiquido : l.valor);
+  clRecalc();
+  openModal('modal-confirma-liquido');
+}
+function clFechar(){ closeModal('modal-confirma-liquido'); renderAll(); }
+function clRecalc(){
+  const id = document.getElementById('cl-lanc-id').value;
+  const l = store.lancamentos.find(x=>x.id===id); if(!l) return;
+  const liquido = parseFloat(document.getElementById('cl-liquido').value||l.valor);
+  const dif = l.valor - liquido;
+  const pct = l.valor ? (dif/l.valor*100) : 0;
+  document.getElementById('cl-resultado').textContent = dif>0.005 ? `Taxa da maquininha: ${R(dif)} (${pct.toFixed(2)}%)` : 'Sem diferença — taxa zero';
+}
+function clConfirmar(){
+  const id = document.getElementById('cl-lanc-id').value;
+  const l = store.lancamentos.find(x=>x.id===id); if(!l) return;
+  const liquido = parseFloat(document.getElementById('cl-liquido').value||l.valor);
+  const dif = Math.max(0, l.valor - liquido);
+  l.statusPag = 'pago';
+  l.valorLiquido = liquido;
+  l.taxaPct = l.valor ? (dif/l.valor*100) : 0;
+  l.liquidoConfirmado = true;
+  sincronizarTaxaMaquininha(id, dif, l.data, l.cliente);
+  saveStore(); closeModal('modal-confirma-liquido'); renderAll();
+  showToast('Recebimento confirmado');
 }
 
 // Conciliação Infinitpay
