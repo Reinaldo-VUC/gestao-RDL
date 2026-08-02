@@ -444,6 +444,15 @@ label{font-size:10.5px;color:var(--mu);margin-bottom:5px;display:block;font-weig
       </div>
       <input type="hidden" id="lc-recorrente-hidden" value="false">
     </div>
+    <div class="field" id="lc-agendavel-wrap">
+      <label>Aparece na agenda?</label>
+      <div class="chip-row" id="lc-agendavel-chips">
+        <button type="button" class="chip active" data-v="true" onclick="lcSetAgendavel(true,this)">Sim, é visita/serviço</button>
+        <button type="button" class="chip" data-v="false" onclick="lcSetAgendavel(false,this)">Não, só financeiro</button>
+      </div>
+      <input type="hidden" id="lc-agendavel" value="true">
+      <p style="font-size:10px;color:var(--mu);margin-top:6px;">Use "só financeiro" pra pagamento atrasado, comissão, ou qualquer entrada que não seja um serviço marcado.</p>
+    </div>
     <div class="field hide" id="lc-periodicidade-wrap">
       <label>Repete a cada</label>
       <div class="chip-row">
@@ -1029,6 +1038,17 @@ function setTipoServicoUI(isRecorrente){
   wrap.querySelectorAll('.chip').forEach(c=>c.classList.toggle('active', (c.dataset.v==='recorrente')===isRecorrente));
   document.getElementById('lc-recorrente-hidden').value = isRecorrente ? 'true' : 'false';
   document.getElementById('lc-periodicidade-wrap').classList.toggle('hide', !isRecorrente);
+  document.getElementById('lc-agendavel-wrap').classList.toggle('hide', isRecorrente);
+  if(isRecorrente) lcSetAgendavelValor(true); // contrato sempre aparece na agenda
+}
+function lcSetAgendavel(v, btn){
+  document.getElementById('lc-agendavel').value = v ? 'true' : 'false';
+  btn.parentElement.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
+  btn.classList.add('active');
+}
+function lcSetAgendavelValor(v){
+  document.getElementById('lc-agendavel').value = v ? 'true' : 'false';
+  highlightChip('lc-agendavel-chips', v ? 'true' : 'false');
 }
 
 const CATEGORIAS_BASE = ['Manutenção preventiva','Corretiva','Instalação','Higienização','Comissão/Terceiros','Outros'];
@@ -1069,6 +1089,7 @@ function lcResetForm(){
   document.getElementById('lc-custo').value='';
   document.getElementById('lc-obs').value='';
   setTipoServicoUI(false);
+  lcSetAgendavelValor(true);
   document.getElementById('lc-btn-del').classList.add('hide');
   document.getElementById('lc-suggest').classList.remove('show');
   // reset chip visuals
@@ -1141,6 +1162,7 @@ function lcEditar(id){
   setChipValue('lc-status', l.status||'agendado');
   setTipoServicoUI(!!l.recorrente);
   if(l.recorrente) setChipValue('lc-periodicidade', l.periodicidade||'mensal');
+  else lcSetAgendavelValor(l.agendavel !== false);
   buildCategoriaChips(l.categoria||'Outros');
   document.getElementById('lc-categoria').value = l.categoria||'Outros';
   document.getElementById('lc-btn-del').classList.remove('hide');
@@ -1171,6 +1193,7 @@ function lcSalvar(){
     forma,
     status: document.getElementById('lc-status').value,
     recorrente: document.getElementById('lc-recorrente-hidden').value === 'true',
+    agendavel: document.getElementById('lc-recorrente-hidden').value === 'true' ? true : (document.getElementById('lc-agendavel').value === 'true'),
     periodicidade: document.getElementById('lc-periodicidade').value,
     categoria: document.getElementById('lc-categoria').value || 'Outros',
     custo: parseFloat(document.getElementById('lc-custo').value||0),
@@ -1281,7 +1304,7 @@ function renderDashSemana(){
   const {dias, label} = getSemanaAtual();
   const livres = dias.filter(d=>!temAgendamentoNoDia(d.iso) && d.dow!==0).length;
   document.getElementById('dash-semana-sub').textContent = label;
-  const total = store.lancamentos.filter(l=>dias.some(d=>d.iso===l.data) && l.status!=='cancelado').length;
+  const total = store.lancamentos.filter(l=>dias.some(d=>d.iso===l.data) && l.status!=='cancelado' && l.agendavel!==false).length;
   document.getElementById('dash-semana-body').innerHTML = `
     <div class="kpi-row" style="margin-bottom:0">
       <div class="kpi-box"><div class="k-label">Atendimentos</div><div class="k-val ic">${total}</div></div>
@@ -1317,7 +1340,7 @@ function getSemanaAtual(offsetSemanas){
   return { dias, label };
 }
 function temAgendamentoNoDia(iso){
-  return store.lancamentos.some(l=>l.data===iso && l.status!=='cancelado');
+  return store.lancamentos.some(l=>l.data===iso && l.status!=='cancelado' && l.agendavel!==false);
 }
 
 function agNovoNoDia(iso){
@@ -1346,7 +1369,7 @@ function renderAgendaSemana(){
   }
   const lista = document.getElementById('ag-lista');
   lista.innerHTML = dias.map(d=>{
-    const items = store.lancamentos.filter(l=>l.data===d.iso).sort((a,b)=>(a.criadoEm||0)-(b.criadoEm||0));
+    const items = store.lancamentos.filter(l=>l.data===d.iso && l.agendavel!==false).sort((a,b)=>(a.criadoEm||0)-(b.criadoEm||0));
     const isToday = d.iso===hoje;
     const isFree = !items.some(i=>i.status!=='cancelado') && d.dow!==0;
     return `<div class="day-block">
@@ -1364,7 +1387,7 @@ function renderAgendaMes(){
   document.getElementById('ag-free-banner').innerHTML='';
   document.getElementById('ag-free-banner').className='free-banner hide';
   const mesStr = `${y}-${String(m+1).padStart(2,'0')}`;
-  const items = store.lancamentos.filter(l=>dentroDoMes(l.data,mesStr)).sort((a,b)=>(a.data||'').localeCompare(b.data||''));
+  const items = store.lancamentos.filter(l=>dentroDoMes(l.data,mesStr) && l.agendavel!==false).sort((a,b)=>(a.data||'').localeCompare(b.data||''));
   const byDay = {};
   items.forEach(l=>{ (byDay[l.data]=byDay[l.data]||[]).push(l); });
   const lista = document.getElementById('ag-lista');
@@ -1429,7 +1452,7 @@ function ocorrenciaParaMes(cliente, servico, mesAlvo){
       id: uid(), cliente:ultimo.cliente, servico:ultimo.servico, orc:ultimo.orc||'',
       valor:ultimo.valor, data: avancarDataPeriodicidade(ultimo.data, ultimo.periodicidade),
       statusPag:'pendente', forma:ultimo.forma, status:'agendado',
-      valorLiquido: ultimo.valor, taxaPct: 0, liquidoConfirmado: false,
+      valorLiquido: ultimo.valor, taxaPct: 0, liquidoConfirmado: false, agendavel: true,
       recorrente:true, periodicidade:ultimo.periodicidade,
       categoria:ultimo.categoria||'Manutenção preventiva', custo:ultimo.custo||0,
       obs:'', criadoEm: Date.now()
