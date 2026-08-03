@@ -167,6 +167,8 @@ label{font-size:10.5px;color:var(--mu);margin-bottom:5px;display:block;font-weig
 .mini-row{display:flex;justify-content:space-between;align-items:center;padding:11px 10px;border-bottom:1px solid var(--bd);gap:10px;border-left:3px solid transparent;border-radius:0 8px 8px 0;}
 .mini-row.st-pago{border-left-color:var(--gn);background:rgba(0,200,122,.04);}
 .mini-row.st-pendente{border-left-color:var(--yw);background:rgba(255,184,0,.04);}
+.mini-row.st-atrasado{border-left-color:var(--rd);background:rgba(255,68,85,.06);}
+.tag-atrasado{background:rgba(255,68,85,.14);color:var(--rd);}
 .mini-row:last-child{border-bottom:none;}
 .mini-l b{font-size:12.5px;display:block;}
 .mini-l span{font-size:10.5px;color:var(--mu);}
@@ -240,6 +242,7 @@ label{font-size:10.5px;color:var(--mu);margin-bottom:5px;display:block;font-weig
     <div class="saldo-card">
       <div class="saldo-label">Saldo do mês</div>
       <div class="saldo-val" id="dash-saldo">R$ 0,00</div>
+      <div id="dash-saldo-delta" style="font-size:10.5px;margin:-8px 0 12px;"></div>
       <div class="azul-track"><div class="azul-fill" id="dash-azul-fill" style="width:0%"></div></div>
       <div class="azul-labels">
         <span>Cobertura das despesas: <b class="azul-pct" id="dash-azul-pct" style="color:var(--txt)">0%</b></span>
@@ -248,8 +251,8 @@ label{font-size:10.5px;color:var(--mu);margin-bottom:5px;display:block;font-weig
     </div>
 
     <div class="kpi-row">
-      <div class="kpi-box"><div class="k-label">Entradas do mês</div><div class="k-val gn" id="dash-k-entradas">R$ 0</div></div>
-      <div class="kpi-box"><div class="k-label">Despesas do mês</div><div class="k-val rd" id="dash-k-despesas">R$ 0</div></div>
+      <div class="kpi-box"><div class="k-label">Entradas do mês</div><div class="k-val gn" id="dash-k-entradas">R$ 0</div><div id="dash-k-entradas-delta" style="font-size:9.5px;margin-top:3px"></div></div>
+      <div class="kpi-box"><div class="k-label">Despesas do mês</div><div class="k-val rd" id="dash-k-despesas">R$ 0</div><div id="dash-k-despesas-delta" style="font-size:9.5px;margin-top:3px"></div></div>
       <div class="kpi-box"><div class="k-label">Custo da dívida (mês)</div><div class="k-val rd" id="dash-k-dividas">R$ 0</div></div>
       <div class="kpi-box"><div class="k-label">Ticket médio</div><div class="k-val ic" id="dash-k-ticket">R$ 0</div></div>
     </div>
@@ -289,7 +292,6 @@ label{font-size:10.5px;color:var(--mu);margin-bottom:5px;display:block;font-weig
       <button class="mes-hoje-btn" id="mesfoco-hoje-ent" onclick="mesFocoHoje()">hoje</button>
     </div>
     <div class="kpi-row" id="ent-kpi-row"></div>
-    <p id="ent-total-geral" style="font-size:10.5px;color:var(--mu);margin:-4px 0 12px;text-align:center;"></p>
     <div class="tabs-row">
       <button class="chip active" id="ent-tab-avulsos" onclick="entSetTab('avulsos')">Avulsos</button>
       <button class="chip" id="ent-tab-fixo" onclick="entSetTab('fixo')">Recorrentes</button>
@@ -462,6 +464,9 @@ label{font-size:10.5px;color:var(--mu);margin-bottom:5px;display:block;font-weig
         <button class="chip" data-v="trimestral" onclick="lcSetChip('lc-periodicidade',this)">Trimestral</button>
       </div>
       <input type="hidden" id="lc-periodicidade" value="mensal">
+      <label style="margin-top:10px">Contrato termina em (opcional)</label>
+      <input id="lc-datafim" type="date">
+      <p style="font-size:10px;color:var(--mu);margin-top:4px;">O sistema avisa automaticamente quando estiver chegando perto.</p>
     </div>
     <div class="field">
       <label>Categoria (pra análise de desempenho)</label>
@@ -519,13 +524,15 @@ label{font-size:10.5px;color:var(--mu);margin-bottom:5px;display:block;font-weig
     <div class="modal-hdr"><h3>Dívida parcelada</h3><button class="modal-close" onclick="closeModal('modal-divida')">✕</button></div>
     <div class="field"><label>Nome</label><input id="dv-nome" placeholder="Ex: Pronampe, DAS retroativo"></div>
     <div class="field-row">
-      <div class="field"><label>Parcela atual</label><input id="dv-atual" type="number" placeholder="19"></div>
-      <div class="field"><label>Total de parcelas</label><input id="dv-total" type="number" placeholder="42"></div>
+      <div class="field"><label>Nessa parcela (nº)</label><input id="dv-atual" type="number" placeholder="21"></div>
+      <div class="field"><label>No mês</label><input id="dv-mesref" type="month"></div>
     </div>
+    <p style="font-size:10px;color:var(--mu);margin:-8px 0 12px;">Ex: "parcela 21 em julho/2026" — o sistema calcula sozinho qual parcela cai em cada mês a partir daí.</p>
     <div class="field-row">
-      <div class="field"><label>Valor da parcela atual (R$)</label><input id="dv-valor" type="number" step="0.01" placeholder="0,00"></div>
+      <div class="field"><label>Total de parcelas</label><input id="dv-total" type="number" placeholder="42"></div>
       <div class="field"><label>Dia do vencimento</label><input id="dv-dia" type="number" min="1" max="31" placeholder="10"></div>
     </div>
+    <div class="field"><label>Valor de referência (R$) — usado quando não há valor específico do mês</label><input id="dv-valor" type="number" step="0.01" placeholder="0,00"></div>
     <input type="hidden" id="dv-id">
     <div class="modal-actions">
       <button class="btn btn-danger hide" id="dv-btn-del" style="flex:0 0 auto" onclick="dvExcluir()">Excluir</button>
@@ -644,6 +651,7 @@ let store = {
   dividas: [],           // {id, nome, parcelaAtual, totalParcelas, valorParcela, dia}
   encargos: [],          // {id, mesRef, valor}
   alertas: [],           // {id, texto, data}
+  contratosMeta: {},     // { 'cliente|servico': { dataFim } }
   config: { metaMensal: 0 }
 };
 
@@ -686,7 +694,7 @@ async function loadStore(uidU){
   const snap = await db.collection('users').doc(uidU).collection('campo').doc('store').get();
   if(snap.exists){
     const d = snap.data();
-    store = { lancamentos:[], recebimentos:[], despesasVar:[], despesasFixas:[], dividas:[], encargos:[], alertas:[], config:{metaMensal:0}, ...d };
+    store = { lancamentos:[], recebimentos:[], despesasVar:[], despesasFixas:[], dividas:[], encargos:[], alertas:[], contratosMeta:{}, config:{metaMensal:0}, ...d };
   }
 }
 function subscribeRealtime(uidU){
@@ -695,7 +703,7 @@ function subscribeRealtime(uidU){
     if(_isSaving) return;
     if(snap.exists && snap.metadata && snap.metadata.hasPendingWrites===false){
       const d = snap.data();
-      store = { lancamentos:[], recebimentos:[], despesasVar:[], despesasFixas:[], dividas:[], encargos:[], alertas:[], config:{metaMensal:0}, ...d };
+      store = { lancamentos:[], recebimentos:[], despesasVar:[], despesasFixas:[], dividas:[], encargos:[], alertas:[], contratosMeta:{}, config:{metaMensal:0}, ...d };
       renderAll();
     }
   });
@@ -771,6 +779,9 @@ function initApp(user){
   seedEntradasHistoricas();
   seedAtualizacaoJulho();
   seedCategoriasRetroativas();
+  limparProjecoesExcedentes();
+  migrarParcelasReferencia();
+  seedDataFimSLAlimentos();
   renderAll();
 }
 
@@ -955,6 +966,50 @@ function seedCategoriasRetroativas(){
   saveStore();
 }
 
+// ═══════════════════════════════════════════════
+// LIMPEZA — remove cobranças de contratos geradas indevidamente muito no futuro
+// (efeito colateral do sistema de projeção antes de ter o limite de horizonte)
+// ═══════════════════════════════════════════════
+function limparProjecoesExcedentes(){
+  if(store.config && store.config.limpezaProjecoesV1) return;
+  if(!store.config) store.config = {};
+  const horizonte = proximoMesStr(todayMonth());
+  const antes = store.lancamentos.length;
+  store.lancamentos = store.lancamentos.filter(l=>{
+    if(!l.recorrente || l.statusPag!=='pendente') return true; // mantém tudo que não é contrato pendente
+    return l.data.slice(0,7) <= horizonte; // remove só pendências de contrato muito além do horizonte
+  });
+  store.config.limpezaProjecoesV1 = true;
+  if(store.lancamentos.length !== antes){ saveStore(); showToast('Limpeza aplicada — cobranças futuras indevidas removidas'); }
+  else saveStore();
+}
+
+// ═══════════════════════════════════════════════
+// MIGRAÇÃO — converte parcelaAtual fixo pra referência calibrável (parcelaRef + mesRef)
+// ═══════════════════════════════════════════════
+function migrarParcelasReferencia(){
+  if(store.config && store.config.migracaoParcelaRefV1) return;
+  if(!store.config) store.config = {};
+  store.dividas.forEach(d=>{
+    if(d.parcelaRef===undefined){
+      d.parcelaRef = d.parcelaAtual || 0;
+      d.mesRef = todayMonth();
+    }
+    if(!d.porMes) d.porMes = {};
+  });
+  store.config.migracaoParcelaRefV1 = true;
+  saveStore();
+}
+function seedDataFimSLAlimentos(){
+  if(store.config && store.config.seedDataFimSLV1) return;
+  if(!store.config) store.config = {};
+  const chave = 'SL Alimentos|Contrato mensal';
+  if(!store.contratosMeta[chave]) store.contratosMeta[chave] = {};
+  store.contratosMeta[chave].dataFim = '2026-10-31';
+  store.config.seedDataFimSLV1 = true;
+  saveStore();
+}
+
 // ── TABS ─────────────────────────────────────────
 let currentTab = 'dashboard';
 function switchTab(id){
@@ -1092,6 +1147,7 @@ function lcResetForm(){
   document.getElementById('lc-data').value = today();
   document.getElementById('lc-custo').value='';
   document.getElementById('lc-obs').value='';
+  document.getElementById('lc-datafim').value='';
   setTipoServicoUI(false);
   lcSetAgendavelValor(true);
   document.getElementById('lc-btn-del').classList.add('hide');
@@ -1165,7 +1221,11 @@ function lcEditar(id){
   }
   setChipValue('lc-status', l.status||'agendado');
   setTipoServicoUI(!!l.recorrente);
-  if(l.recorrente) setChipValue('lc-periodicidade', l.periodicidade||'mensal');
+  if(l.recorrente){
+    setChipValue('lc-periodicidade', l.periodicidade||'mensal');
+    const meta = store.contratosMeta[l.cliente+'|'+l.servico];
+    document.getElementById('lc-datafim').value = (meta && meta.dataFim) || '';
+  }
   else lcSetAgendavelValor(l.agendavel !== false);
   buildCategoriaChips(l.categoria||'Outros');
   document.getElementById('lc-categoria').value = l.categoria||'Outros';
@@ -1211,6 +1271,12 @@ function lcSalvar(){
     obj.valorLiquido = valor; obj.taxaPct = 0; obj.liquidoConfirmado = false;
     store.lancamentos.push(obj);
   }
+  if(obj.recorrente){
+    const chave = cliente+'|'+obj.servico;
+    const dataFim = document.getElementById('lc-datafim').value;
+    if(dataFim) store.contratosMeta[chave] = {...store.contratosMeta[chave], dataFim};
+    else if(store.contratosMeta[chave]) delete store.contratosMeta[chave].dataFim;
+  }
   saveStore();
   closeModal('modal-lanc');
   const saved = store.lancamentos.find(l=>l.id===id);
@@ -1249,7 +1315,7 @@ function calcMes(mesStr){
     const st = (d.statusPorMes && d.statusPorMes[mesStr]) || 'pago';
     return st==='pendente' ? s : s + parseFloat(d.valor||0);
   }, 0);
-  const dividasM = store.dividas.reduce((s,d)=>s+parseFloat(d.valorParcela||0),0);
+  const dividasM = store.dividas.reduce((s,d)=>s+dvValorMes(d,mesStr),0);
   const encargo = store.encargos.find(e=>e.mesRef===mesStr);
   const encargoVal = encargo ? parseFloat(encargo.valor||0) : 0;
   const despesasTotais = despVar + despFixa + dividasM + encargoVal;
@@ -1259,15 +1325,31 @@ function calcMes(mesStr){
   return { entradas, despVar, despFixa, dividasM, encargoVal, despesasTotais, saldo, ticket, custoDivida: dividasM+encargoVal };
 }
 
+function mesAnteriorStr(mesStr){
+  const [y,m] = mesStr.split('-').map(Number);
+  const d = new Date(y, m-2, 1);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+function deltaHtml(atual, anterior, quantoMaiorMelhor){
+  if(!anterior){ return '<span style="color:var(--mu)">sem dado do mês anterior</span>'; }
+  const diff = atual - anterior;
+  const pct = anterior!==0 ? (diff/Math.abs(anterior)*100) : (atual!==0?100:0);
+  const bom = quantoMaiorMelhor ? diff>=0 : diff<=0;
+  const seta = diff>=0 ? '▲' : '▼';
+  const cor = diff===0 ? 'var(--mu)' : (bom ? 'var(--gn)' : 'var(--rd)');
+  return `<span style="color:${cor}">${seta} ${Math.abs(pct).toFixed(0)}% vs mês anterior</span>`;
+}
 function renderDashboard(){
   const mes = mesFoco;
   const c = calcMes(mes);
+  const cAnt = calcMes(mesAnteriorStr(mes));
   const h = new Date().getHours();
   document.getElementById('dash-greet').textContent = (h<12?'Bom dia':h<18?'Boa tarde':'Boa noite')+', Reinaldo';
   document.getElementById('dash-date').textContent = new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long'});
   const saldoEl = document.getElementById('dash-saldo');
   saldoEl.textContent = R(c.saldo);
   saldoEl.className = 'saldo-val ' + (c.saldo>=0?'pos':'neg');
+  document.getElementById('dash-saldo-delta').innerHTML = deltaHtml(c.saldo, cAnt.saldo, true);
   const pct = c.despesasTotais>0 ? Math.min(150, (c.entradas/c.despesasTotais)*100) : (c.entradas>0?100:0);
   const pctShow = Math.min(100,pct);
   document.getElementById('dash-azul-fill').style.width = pctShow+'%';
@@ -1275,7 +1357,9 @@ function renderDashboard(){
   document.getElementById('dash-azul-pct').textContent = Math.round(pct)+'%';
   document.getElementById('dash-azul-msg').textContent = pct>=100 ? '🟢 no azul' : (pct>=70?'🟡 quase lá':'🔴 abaixo do custo');
   document.getElementById('dash-k-entradas').textContent = R(c.entradas);
+  document.getElementById('dash-k-entradas-delta').innerHTML = deltaHtml(c.entradas, cAnt.entradas, true);
   document.getElementById('dash-k-despesas').textContent = R(c.despesasTotais);
+  document.getElementById('dash-k-despesas-delta').innerHTML = deltaHtml(c.despesasTotais, cAnt.despesasTotais, false);
   document.getElementById('dash-k-dividas').textContent = R(c.custoDivida);
   document.getElementById('dash-k-ticket').textContent = R(c.ticket);
 
@@ -1292,8 +1376,19 @@ function renderDashboard(){
     items.push({cls, html:`<div class="alert-item ${cls}"><span>${prefix}</span><span>${a.texto}${a.data?' — <b>'+fmtDateBR(a.data)+'</b>':''}</span></div>`});
   });
   store.dividas.forEach(d=>{
-    const restam = (d.totalParcelas||0)-(d.parcelaAtual||0);
+    const restam = Math.max(0,(d.totalParcelas||0)-parcelaDoMes(d, mesFoco));
     if(restam<=3 && restam>0) items.push({cls:'alert-warn', html:`<div class="alert-item alert-warn"><span>🟠</span><span>${d.nome}: faltam <b>${restam}</b> parcelas pra quitar</span></div>`});
+  });
+  Object.entries(store.contratosMeta).forEach(([chave, meta])=>{
+    if(!meta.dataFim) return;
+    const dias = Math.round((new Date(meta.dataFim+'T00:00:00') - new Date())/86400000);
+    if(dias<0) return; // já passou, não avisa mais
+    if(dias<=45){
+      const cliente = chave.split('|')[0];
+      const cls = dias<=15 ? 'alert-err' : 'alert-warn';
+      const prefix = dias<=15 ? '⛔' : '🟠';
+      items.push({cls, html:`<div class="alert-item ${cls}"><span>${prefix}</span><span>Contrato <b>${cliente}</b> encerra em <b>${dias} dia${dias!==1?'s':''}</b> — ${fmtDateBR(meta.dataFim)}</span></div>`});
+    }
   });
   alertasBody.innerHTML = items.length ? items.map(i=>i.html).join('') : '<div class="empty-msg">Sem alertas no momento</div>';
 
@@ -1448,11 +1543,21 @@ function avancarDataPeriodicidade(dataStr, periodicidade){
 }
 // Garante e retorna a ocorrência de um contrato recorrente para um mês específico,
 // projetando (e persistindo) as próximas ocorrências automaticamente se necessário.
+function proximoMesStr(mesStr){
+  const [y,m] = mesStr.split('-').map(Number);
+  const d = new Date(y, m, 1); // já avança 1 mês
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+}
 function ocorrenciaParaMes(cliente, servico, mesAlvo){
+  const horizonte = proximoMesStr(todayMonth()); // não gera além do mês atual + 1
   let candidatos = store.lancamentos.filter(l=>l.recorrente && l.cliente===cliente && l.servico===servico && l.status!=='cancelado');
   if(!candidatos.length) return null;
   candidatos.sort((a,b)=>(a.data||'').localeCompare(b.data||''));
   let ultimo = candidatos[candidatos.length-1];
+  if(mesAlvo > horizonte && ultimo.data.slice(0,7) < mesAlvo){
+    // mês muito no futuro — não gera ainda, evita acumular pendências fantasmas
+    return null;
+  }
   let criouAlgum = false, tentativas = 0;
   while(ultimo.data.slice(0,7) < mesAlvo && tentativas < 36){
     const novo = {
@@ -1481,11 +1586,9 @@ function renderEntradas(){
 
   const recebidoMes = store.lancamentos.filter(l=>l.statusPag==='pago' && dentroDoMes(l.data,mes)).reduce((s,l)=>s+parseFloat(l.valor||0),0);
   const pendenteMes = store.lancamentos.filter(l=>l.statusPag==='pendente' && l.status!=='cancelado' && dentroDoMes(l.data,mes)).reduce((s,l)=>s+parseFloat(l.valor||0),0);
-  const pendenteTotalGeral = store.lancamentos.filter(l=>l.statusPag==='pendente' && l.status!=='cancelado').reduce((s,l)=>s+parseFloat(l.valor||0),0);
   document.getElementById('ent-kpi-row').innerHTML = `
     <div class="kpi-box"><div class="k-label">Recebido no mês</div><div class="k-val gn">${R(recebidoMes)}</div></div>
     <div class="kpi-box"><div class="k-label">A receber no mês</div><div class="k-val" style="color:var(--yw)">${R(pendenteMes)}</div></div>`;
-  document.getElementById('ent-total-geral').textContent = `Total pendente (todos os meses): ${R(pendenteTotalGeral)}`;
 
   const body = document.getElementById('ent-body');
   if(entTab==='avulsos'){
@@ -1499,7 +1602,7 @@ function renderEntradas(){
     const conciliacoesMes = store.recebimentos.filter(r=>dentroDoMes(r.data,mes));
     body.innerHTML = `${filtroHtml}${botaoConciliacao}
       <div class="card"><div class="card-title">Aguardando confirmação <span class="sub">${pendentes.length}</span></div>
-      ${pendentes.length ? pendentes.map(l=>`<div class="mini-row st-pendente" style="cursor:pointer" onclick="lcEditar('${l.id}')"><div class="mini-l"><b>${l.cliente}</b><span>${l.servico} · ${fmtDateBR(l.data)} · ${labelForma(l.forma)}</span></div><div class="mini-r"><b>${R(l.valor)}</b>${liquidoAnotacao(l)}${stToggleHtml(l)}</div></div>`).join('') : '<div class="empty-msg">Nada pendente</div>'}
+      ${pendentes.length ? pendentes.map(l=>`<div class="mini-row st-${statusVisual(l)}" style="cursor:pointer" onclick="lcEditar('${l.id}')"><div class="mini-l"><b>${l.cliente}</b><span>${l.servico} · ${fmtDateBR(l.data)} · ${labelForma(l.forma)}</span>${statusVisual(l)==='atrasado'?'<span class="tag tag-atrasado" style="margin-top:4px;display:inline-block">Atrasado</span>':''}</div><div class="mini-r"><b>${R(l.valor)}</b>${liquidoAnotacao(l)}${stToggleHtml(l)}</div></div>`).join('') : '<div class="empty-msg">Nada pendente</div>'}
       </div>
       <div class="card"><div class="card-title">Recebidos no mês</div>
       ${pagos.length ? pagos.map(l=>`<div class="mini-row st-pago" style="cursor:pointer" onclick="lcEditar('${l.id}')"><div class="mini-l"><b>${l.cliente}</b><span>${l.servico} · ${fmtDateBR(l.data)} · ${labelForma(l.forma)}</span></div><div class="mini-r"><b>${R(l.valor)}</b>${liquidoAnotacao(l)}${stToggleHtml(l)}</div></div>`).join('') : '<div class="empty-msg">Nenhum recebido nesse mês</div>'}
@@ -1512,7 +1615,7 @@ function renderEntradas(){
     if(recFiltroForma!=='todos') linhas = linhas.filter(l=>l.forma===recFiltroForma);
     linhas.sort((a,b)=>(a.data||'').localeCompare(b.data||''));
     body.innerHTML = `<p style="font-size:11px;color:var(--mu);margin-bottom:10px;">Toque num contrato pra editar valor, dia ou forma de pagamento.</p>${filtroHtml}<div class="card"><div class="card-title">Contratos com cobrança nesse mês <span class="sub">${linhas.length}</span></div>
-      ${linhas.length ? linhas.map(l=>`<div class="mini-row st-${l.statusPag}" style="cursor:pointer" onclick="lcEditar('${l.id}')"><div class="mini-l"><b>${l.cliente}</b><span>${l.servico} · ${fmtDateBR(l.data)} · ${labelForma(l.forma)}</span></div><div class="mini-r"><b>${R(l.valor)}</b>${liquidoAnotacao(l)}${stToggleHtml(l)}</div></div>`).join('') : '<div class="empty-msg">Nenhum contrato com cobrança nesse mês</div>'}
+      ${linhas.length ? linhas.map(l=>`<div class="mini-row st-${statusVisual(l)}" style="cursor:pointer" onclick="lcEditar('${l.id}')"><div class="mini-l"><b>${l.cliente}</b><span>${l.servico} · ${fmtDateBR(l.data)} · ${labelForma(l.forma)}</span>${statusVisual(l)==='atrasado'?'<span class="tag tag-atrasado" style="margin-top:4px;display:inline-block">Atrasado</span>':''}</div><div class="mini-r"><b>${R(l.valor)}</b>${liquidoAnotacao(l)}${stToggleHtml(l)}</div></div>`).join('') : '<div class="empty-msg">Nenhum contrato com cobrança nesse mês</div>'}
       </div>`;
   }
 }
@@ -1536,6 +1639,11 @@ function stToggleHtml(l){
     <button class="${l.statusPag==='pendente'?'on-pendente':''}" onclick="entSetStatusPag('${l.id}','pendente')">Pendente</button>
     <button class="${l.statusPag==='pago'?'on-pago':''}" onclick="entSetStatusPag('${l.id}','pago')">Pago</button>
   </div>`;
+}
+function statusVisual(l){
+  if(l.statusPag==='pago') return 'pago';
+  if(l.data && l.data < today()) return 'atrasado';
+  return 'pendente';
 }
 function liquidoAnotacao(l){
   if(l.forma!=='infinitpay' || !l.liquidoConfirmado || !l.taxaPct) return '';
@@ -1694,12 +1802,15 @@ function dvSalvar(){
   const nome = document.getElementById('dv-nome').value.trim();
   if(!nome){ showToast('Informe o nome'); return; }
   const id = document.getElementById('dv-id').value || uid();
+  const existente = store.dividas.find(d=>d.id===id);
   const obj = {
     id, nome,
-    parcelaAtual: parseInt(document.getElementById('dv-atual').value||0),
+    parcelaRef: parseInt(document.getElementById('dv-atual').value||0),
+    mesRef: document.getElementById('dv-mesref').value || todayMonth(),
     totalParcelas: parseInt(document.getElementById('dv-total').value||0),
     valorParcela: parseFloat(document.getElementById('dv-valor').value||0),
-    dia: parseInt(document.getElementById('dv-dia').value||1)
+    dia: parseInt(document.getElementById('dv-dia').value||1),
+    porMes: existente ? existente.porMes : {}
   };
   const idx = store.dividas.findIndex(d=>d.id===id);
   if(idx>=0) store.dividas[idx]=obj; else store.dividas.push(obj);
@@ -1708,13 +1819,15 @@ function dvSalvar(){
 }
 function clearDvForm(){
   ['dv-id','dv-nome','dv-atual','dv-total','dv-valor','dv-dia'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('dv-mesref').value = todayMonth();
   document.getElementById('dv-btn-del').classList.add('hide');
 }
 function dvEditar(id){
   const d = store.dividas.find(x=>x.id===id); if(!d) return;
   document.getElementById('dv-id').value=d.id;
   document.getElementById('dv-nome').value=d.nome;
-  document.getElementById('dv-atual').value=d.parcelaAtual;
+  document.getElementById('dv-atual').value = parcelaDoMes(d, mesFoco);
+  document.getElementById('dv-mesref').value = mesFoco;
   document.getElementById('dv-total').value=d.totalParcelas;
   document.getElementById('dv-valor').value=d.valorParcela;
   document.getElementById('dv-dia').value=d.dia;
@@ -1727,13 +1840,44 @@ function dvExcluir(){
   store.dividas = store.dividas.filter(d=>d.id!==id);
   saveStore(); closeModal('modal-divida'); clearDvForm(); renderAll();
 }
-function dvAvancarParcela(id){
+function diffMeses(m1, m2){
+  const [y1,mo1]=m1.split('-').map(Number), [y2,mo2]=m2.split('-').map(Number);
+  return (y2-y1)*12 + (mo2-mo1);
+}
+function parcelaDoMes(d, mes){
+  const base = d.parcelaRef!==undefined ? d.parcelaRef : (d.parcelaAtual||0);
+  const mesBase = d.mesRef || todayMonth();
+  let p = base + diffMeses(mesBase, mes);
+  if(p < 0) p = 0;
+  if(d.totalParcelas && p > d.totalParcelas) p = d.totalParcelas;
+  return p;
+}
+function dvValorMes(d, mes){
+  return (d.porMes && d.porMes[mes] && d.porMes[mes].valor!==undefined) ? d.porMes[mes].valor : d.valorParcela;
+}
+function dvStatusMes(d, mes){
+  return (d.porMes && d.porMes[mes] && d.porMes[mes].pago) ? 'pago' : 'pendente';
+}
+function dvEditarValorMes(id, mes){
   const d = store.dividas.find(x=>x.id===id); if(!d) return;
-  if(d.parcelaAtual >= d.totalParcelas){ showToast('Essa dívida já foi quitada 🎉'); return; }
-  d.parcelaAtual++;
+  const atual = dvValorMes(d, mes);
+  const novo = prompt(`Valor da parcela de ${mes} pra "${d.nome}" (R$):\n(muda só esse mês — os outros continuam com o valor de referência)`, atual);
+  if(novo===null) return;
+  const val = parseFloat(String(novo).replace(',','.'));
+  if(isNaN(val) || val<=0){ showToast('Valor inválido'); return; }
+  if(!d.porMes) d.porMes = {};
+  if(!d.porMes[mes]) d.porMes[mes] = {};
+  d.porMes[mes].valor = val;
   saveStore(); renderAll();
-  if(d.parcelaAtual>=d.totalParcelas) showToast('🎉 '+d.nome+' quitada!');
-  else showToast('Parcela avançada — atualize o valor se ele mudou');
+  showToast(`Valor de ${mes} atualizado`);
+}
+function dvSetStatusMes(id, mes, pago){
+  const d = store.dividas.find(x=>x.id===id); if(!d) return;
+  if(!d.porMes) d.porMes = {};
+  if(!d.porMes[mes]) d.porMes[mes] = {};
+  d.porMes[mes].pago = pago;
+  saveStore(); renderAll();
+  if(pago && parcelaDoMes(d,mes) >= d.totalParcelas) showToast('🎉 '+d.nome+' quitada!');
 }
 
 function ecSalvar(){
@@ -1803,8 +1947,77 @@ function alExcluir(id){
 // ═══════════════════════════════════════════════
 // ANÁLISE — desempenho por categoria de serviço (faturamento, ticket médio, lucro quando há custo)
 // ═══════════════════════════════════════════════
+function mesesRestantesDoAno(mesAtual){
+  const [y,m] = mesAtual.split('-').map(Number);
+  const arr = [];
+  for(let mm=m; mm<=12; mm++) arr.push(`${y}-${String(mm).padStart(2,'0')}`);
+  return arr;
+}
+const NOMES_MES_CURTO = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+function serieValeNoMes(l, mesAlvo){
+  if(l.periodicidade==='mensal' || l.periodicidade==='quinzenal' || !l.periodicidade) return true;
+  const passo = l.periodicidade==='bimestral' ? 2 : l.periodicidade==='trimestral' ? 3 : 1;
+  const dif = diffMeses(l.data.slice(0,7), mesAlvo);
+  return dif>=0 && dif % passo === 0;
+}
+function projecaoAnual(){
+  const horizonte = proximoMesStr(todayMonth());
+  const meses = mesesRestantesDoAno(todayMonth());
+  const series = {};
+  store.lancamentos.forEach(l=>{ if(l.recorrente && l.status!=='cancelado'){ const key=l.cliente+'|'+l.servico; if(!series[key] || l.data>series[key].data) series[key]=l; } });
+  return meses.map(mes=>{
+    let total = 0;
+    Object.values(series).forEach(l=>{
+      const meta = store.contratosMeta[l.cliente+'|'+l.servico];
+      if(meta && meta.dataFim && mes > meta.dataFim.slice(0,7)) return; // contrato já encerrado nesse mês
+      if(!serieValeNoMes(l, mes)) return;
+      const real = store.lancamentos.find(x=>x.recorrente && x.cliente===l.cliente && x.servico===l.servico && x.status!=='cancelado' && dentroDoMes(x.data,mes));
+      total += real ? parseFloat(real.valor||0) : parseFloat(l.valor||0);
+    });
+    return { mes, total, real: mes<=horizonte };
+  });
+}
+function graficoAnoHtml(){
+  const ano = todayMonth().slice(0,4);
+  const meses = []; for(let m=1;m<=12;m++) meses.push(`${ano}-${String(m).padStart(2,'0')}`);
+  const dados = meses.map(m=>({mes:m, ...calcMes(m)}));
+  const maxAbs = Math.max(1, ...dados.map(d=>Math.abs(d.saldo)));
+  return `<div style="display:flex;align-items:flex-end;gap:5px;height:130px;padding:10px 2px 0;">
+    ${dados.map((d,i)=>{
+      const alturaPct = Math.max(3, Math.abs(d.saldo)/maxAbs*100);
+      const cor = d.saldo>=0 ? 'var(--gn)' : 'var(--rd)';
+      const emFoco = d.mes===mesFoco;
+      return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;cursor:pointer" onclick="mesFoco='${d.mes}';renderAll()" title="${NOMES_MES_CURTO[i]}: ${R(d.saldo)}">
+        <div style="width:100%;max-width:20px;height:${alturaPct}%;background:${cor};border-radius:3px 3px 0 0;${emFoco?'box-shadow:0 0 0 2px var(--ic)':''}"></div>
+        <div style="font-size:8px;color:${emFoco?'var(--ic)':'var(--mu)'};margin-top:4px;font-weight:${emFoco?'700':'400'}">${NOMES_MES_CURTO[i]}</div>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
 function renderAnalise(){
   const mes = mesFoco;
+
+  // Gráfico do ano
+  const anoLabel = todayMonth().slice(0,4);
+  let html = `<div class="card">
+    <div class="card-title">Saldo mês a mês em ${anoLabel} <span class="sub">toque numa barra pra ver o mês</span></div>
+    ${graficoAnoHtml()}
+  </div>`;
+
+  // Projeção até dezembro
+  const proj = projecaoAnual();
+  const totalProj = proj.reduce((s,p)=>s+p.total,0);
+  html += `<div class="card">
+    <div class="card-title">Projeção de contratos até dezembro <span class="sub">${R(totalProj)}</span></div>
+    <p style="font-size:10px;color:var(--mu);margin-bottom:12px;">Baseado nos contratos ativos hoje, continuando no valor atual. Muda conforme você adiciona ou encerra contratos.</p>
+    ${proj.map((p,i)=>{
+      const [,mm] = p.mes.split('-');
+      const nome = NOMES_MES_CURTO[parseInt(mm)-1];
+      return `<div class="mini-row"><div class="mini-l"><b>${nome}/${p.mes.slice(0,4)}</b><span>${p.real?'já lançado':'projeção'}</span></div><div class="mini-r"><b>${R(p.total)}</b></div></div>`;
+    }).join('')}
+  </div>`;
+
+  // Desempenho por categoria
   const relevantes = store.lancamentos.filter(l=>l.status!=='cancelado' && dentroDoMes(l.data,mes) && parseFloat(l.valor)>0);
   const porCategoria = {};
   relevantes.forEach(l=>{
@@ -1822,11 +2035,10 @@ function renderAnalise(){
     pct: totalFat ? (d.faturamento/totalFat*100) : 0
   })).sort((a,b)=>b.faturamento-a.faturamento);
 
-  const body = document.getElementById('analise-body');
-  if(!linhas.length){ body.innerHTML = '<div class="empty-msg">Nenhum serviço lançado nesse mês ainda</div>'; return; }
-
-  body.innerHTML = `
-    <div class="card">
+  if(!linhas.length){
+    html += '<div class="card"><div class="card-title">Faturamento por categoria</div><div class="empty-msg">Nenhum serviço lançado nesse mês ainda</div></div>';
+  } else {
+    html += `<div class="card">
       <div class="card-title">Faturamento por categoria <span class="sub">${R(totalFat)} no mês</span></div>
       ${linhas.map(l=>`
         <div style="margin-bottom:18px">
@@ -1841,6 +2053,9 @@ function renderAnalise(){
         </div>`).join('')}
     </div>
     <p style="font-size:10.5px;color:var(--mu);text-align:center;">Lucro só aparece quando você preenche o custo estimado no lançamento.</p>`;
+  }
+
+  document.getElementById('analise-body').innerHTML = html;
 }
 
 function renderDespesas(){
@@ -1850,13 +2065,20 @@ function renderDespesas(){
   document.getElementById('desp-k-fixo').textContent = R(c.despFixa + c.custoDivida);
 
   document.getElementById('desp-dividas-body').innerHTML = store.dividas.length ? store.dividas.map(d=>{
-    const pct = d.totalParcelas ? Math.min(100,(d.parcelaAtual/d.totalParcelas)*100) : 0;
-    const restam = (d.totalParcelas||0)-(d.parcelaAtual||0);
-    return `<div class="divida-card" onclick="dvEditar('${d.id}')">
-      <div class="divida-top"><b>${d.nome}</b><span style="font-size:12px;font-weight:800;font-family:'Syne',sans-serif">${R(d.valorParcela)}</span></div>
-      <div class="divida-parc">Parcela ${d.parcelaAtual}/${d.totalParcelas} · faltam ${restam} · venc. dia ${d.dia}</div>
+    const parcelaAtual = parcelaDoMes(d, mes);
+    const pct = d.totalParcelas ? Math.min(100,(parcelaAtual/d.totalParcelas)*100) : 0;
+    const restam = Math.max(0,(d.totalParcelas||0)-parcelaAtual);
+    const valorMes = dvValorMes(d, mes);
+    const statusMes = dvStatusMes(d, mes);
+    return `<div class="divida-card st-${statusMes}">
+      <div class="divida-top"><b>${d.nome}</b><span style="font-size:12px;font-weight:800;font-family:'Syne',sans-serif;cursor:pointer" onclick="dvEditarValorMes('${d.id}','${mes}')">${R(valorMes)} ✎</span></div>
+      <div class="divida-parc">Parcela ${parcelaAtual}/${d.totalParcelas} · faltam ${restam} · venc. dia ${d.dia}</div>
       <div class="progress-mini"><div class="progress-mini-fill" style="width:${pct}%"></div></div>
-      <div style="margin-top:9px" onclick="event.stopPropagation()"><button class="btn btn-outline btn-sm" onclick="dvAvancarParcela('${d.id}')">✓ Marcar parcela deste mês como paga</button></div>
+      <div class="st-toggle" style="justify-content:flex-start;margin-top:10px">
+        <button class="${statusMes==='pendente'?'on-pendente':''}" onclick="dvSetStatusMes('${d.id}','${mes}',false)">Pendente</button>
+        <button class="${statusMes==='pago'?'on-pago':''}" onclick="dvSetStatusMes('${d.id}','${mes}',true)">Pago</button>
+        <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="dvEditar('${d.id}')">Editar dívida</button>
+      </div>
     </div>`;
   }).join('') : '<div class="empty-msg">Nenhuma dívida parcelada cadastrada</div>';
 
