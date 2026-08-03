@@ -1241,7 +1241,10 @@ function dentroDoMes(dataStr, mesStr){ return (dataStr||'').startsWith(mesStr); 
 function calcMes(mesStr){
   const entradas = store.lancamentos.filter(l=>l.statusPag==='pago' && dentroDoMes(l.data,mesStr)).reduce((s,l)=>s+parseFloat(l.valor||0),0);
   const despVar = store.despesasVar.filter(d=>dentroDoMes(d.data,mesStr)).reduce((s,d)=>s+parseFloat(d.valor||0),0);
-  const despFixa = store.despesasFixas.reduce((s,d)=>s+parseFloat(d.valor||0),0);
+  const despFixa = store.despesasFixas.reduce((s,d)=>{
+    const st = (d.statusPorMes && d.statusPorMes[mesStr]) || 'pago';
+    return st==='pendente' ? s : s + parseFloat(d.valor||0);
+  }, 0);
   const dividasM = store.dividas.reduce((s,d)=>s+parseFloat(d.valorParcela||0),0);
   const encargo = store.encargos.find(e=>e.mesRef===mesStr);
   const encargoVal = encargo ? parseFloat(encargo.valor||0) : 0;
@@ -1721,6 +1724,19 @@ function dfSalvar(){
   showToast('Despesa fixa salva');
 }
 function clearDfForm(){ ['df-id','df-desc','df-valor','df-dia'].forEach(id=>document.getElementById(id).value=''); document.getElementById('df-btn-del').classList.add('hide'); }
+function dfToggleHtml(d, mes, st){
+  return `<div class="st-toggle" onclick="event.stopPropagation()">
+    <button class="${st==='pendente'?'on-pendente':''}" onclick="dfSetStatusMes('${d.id}','${mes}','pendente')">Pendente</button>
+    <button class="${st==='pago'?'on-pago':''}" onclick="dfSetStatusMes('${d.id}','${mes}','pago')">Pago</button>
+  </div>`;
+}
+function dfSetStatusMes(id, mes, status){
+  const d = store.despesasFixas.find(x=>x.id===id); if(!d) return;
+  if(!d.statusPorMes) d.statusPorMes = {};
+  d.statusPorMes[mes] = status;
+  saveStore(); renderAll();
+  showToast(status==='pago' ? `Marcado como pago em ${mes}` : `Marcado como pendente em ${mes}`);
+}
 function dfEditar(id){
   const d = store.despesasFixas.find(x=>x.id===id); if(!d) return;
   document.getElementById('df-id').value=d.id; document.getElementById('df-desc').value=d.desc;
@@ -1814,11 +1830,13 @@ function renderDespesas(){
     ? `<div class="mini-row"><div class="mini-l"><b>${mes}</b><span>Juros / tarifas cheque especial</span></div><div class="mini-r"><b>${R(enc.valor)}</b></div></div>`
     : `<div class="empty-msg">Ainda não lançado esse mês</div>`;
 
-  document.getElementById('desp-fixas-body').innerHTML = store.despesasFixas.length ? store.despesasFixas.map(d=>`
-    <div class="mini-row" onclick="dfEditar('${d.id}')" style="cursor:pointer">
+  document.getElementById('desp-fixas-body').innerHTML = store.despesasFixas.length ? store.despesasFixas.map(d=>{
+    const st = (d.statusPorMes && d.statusPorMes[mes]) || 'pago';
+    return `<div class="mini-row st-${st}" onclick="dfEditar('${d.id}')" style="cursor:pointer">
       <div class="mini-l"><b>${d.desc}</b><span>vence dia ${d.dia}</span></div>
-      <div class="mini-r"><b>${R(d.valor)}</b></div>
-    </div>`).join('') : '<div class="empty-msg">Nenhuma despesa fixa cadastrada</div>';
+      <div class="mini-r"><b>${R(d.valor)}</b>${dfToggleHtml(d,mes,st)}</div>
+    </div>`;
+  }).join('') : '<div class="empty-msg">Nenhuma despesa fixa cadastrada</div>';
 
   const recentes = [...store.despesasVar].filter(d=>dentroDoMes(d.data,mes)).sort((a,b)=>(b.data||'').localeCompare(a.data||''));
   document.getElementById('desp-var-body').innerHTML = recentes.length ? recentes.map(d=>`
