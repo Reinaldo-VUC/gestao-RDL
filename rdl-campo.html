@@ -403,7 +403,7 @@ label{font-size:10.5px;color:var(--mu);margin-bottom:5px;display:block;font-weig
     </div>
     <div class="field-row">
       <div class="field"><label>Valor (R$)</label><input id="lc-valor" type="number" step="0.01" placeholder="0,00"></div>
-      <div class="field"><label id="lc-data-label">Data</label><input id="lc-data" type="date"></div>
+      <div class="field"><label id="lc-data-label">Data</label><input id="lc-data" type="date" onchange="if(document.getElementById('lc-recorrente-hidden').value==='true') setTipoServicoUI(true)"></div>
     </div>
     <div class="field">
       <label>Data de pagamento (se diferente)</label>
@@ -481,9 +481,11 @@ label{font-size:10.5px;color:var(--mu);margin-bottom:5px;display:block;font-weig
         <input id="lc-dias-pag" type="number" placeholder="5" value="5">
         <p style="font-size:10px;color:var(--mu);margin-top:4px;">A visita continua entrando na agenda pela periodicidade acima. O financeiro só conta esse valor a partir de quando você marcar o serviço como "Concluído" + esses dias.</p>
       </div>
-      <label style="margin-top:10px">Contrato termina em (opcional)</label>
-      <input id="lc-datafim" type="date">
-      <p style="font-size:10px;color:var(--mu);margin-top:4px;">O sistema avisa automaticamente quando estiver chegando perto.</p>
+      <div class="suggest-box show" style="margin-top:10px;background:rgba(0,200,255,.06);border-color:rgba(0,200,255,.25)">
+        <span id="lc-contrato-datas-txt" style="color:var(--ic);font-size:11px"></span>
+        <button type="button" class="btn btn-outline btn-sm" onclick="lcCorrigirDatasContrato()">Corrigir</button>
+      </div>
+      <p style="font-size:10px;color:var(--mu);margin-top:4px;">Contratos novos começam com a data acima e terminam 12 meses depois, automaticamente. Use "Corrigir" só se esse contrato for uma exceção.</p>
     </div>
     <div class="field">
       <label>Categoria (pra análise de desempenho)</label>
@@ -799,6 +801,7 @@ function initApp(user){
   limparProjecoesExcedentes();
   migrarParcelasReferencia();
   limparDuplicatasRecorrentes();
+  migrarAncorasContratos();
   seedDataFimSLAlimentos();
   renderAll();
 }
@@ -1060,6 +1063,32 @@ function seedDataFimSLAlimentos(){
   saveStore();
 }
 
+// ═══════════════════════════════════════════════
+// MIGRAÇÃO CRÍTICA — todo contrato já existente precisa de uma âncora (dataInicio) no novo modelo,
+// senão para de gerar cobranças. Usa o lançamento mais antigo de cada série como data de início.
+// ═══════════════════════════════════════════════
+function migrarAncorasContratos(){
+  if(store.config && store.config.migracaoAncorasV1) return;
+  if(!store.config) store.config = {};
+  const series = {};
+  store.lancamentos.forEach(l=>{
+    if(!l.recorrente || l.status==='cancelado' || !l.data) return;
+    const chave = l.cliente+'|'+l.servico;
+    if(!series[chave] || l.data < series[chave].data) series[chave] = l; // guarda o mais antigo
+  });
+  Object.entries(series).forEach(([chave, primeiro])=>{
+    if(!store.contratosMeta[chave]) store.contratosMeta[chave] = {};
+    const meta = store.contratosMeta[chave];
+    if(!meta.dataInicio){
+      meta.dataInicio = primeiro.data;
+      meta.periodicidade = primeiro.periodicidade || 'mensal';
+      if(!meta.dataFim) meta.dataFim = addMesesData(primeiro.data, 12);
+    }
+  });
+  store.config.migracaoAncorasV1 = true;
+  saveStore();
+}
+
 // ── TABS ─────────────────────────────────────────
 let currentTab = 'dashboard';
 function switchTab(id){
@@ -1150,6 +1179,27 @@ function setTipoServicoUI(isRecorrente){
   document.getElementById('lc-agendavel-wrap').classList.toggle('hide', isRecorrente);
   document.getElementById('lc-data-label').textContent = isRecorrente ? 'Data de início' : 'Data';
   if(isRecorrente) lcSetAgendavelValor(true); // contrato sempre aparece na agenda
+  if(isRecorrente && !document.getElementById('lc-id').value){
+    // criação nova — mostra prévia do que vai ser gravado
+    const dataInicio = document.getElementById('lc-data').value || today();
+    document.getElementById('lc-contrato-datas-txt').textContent = `Início ${fmtDateBR(dataInicio)} · Término ${fmtDateBR(addMesesData(dataInicio,12))} (12 meses)`;
+  }
+}
+function lcCorrigirDatasContrato(){
+  const cliente = document.getElementById('lc-cliente').value.trim();
+  const servico = document.getElementById('lc-servico').value.trim();
+  if(!cliente || !servico){ showToast('Preencha cliente e serviço primeiro'); return; }
+  const chave = cliente+'|'+servico;
+  const meta = store.contratosMeta[chave] || {};
+  const novoInicio = prompt('Data de início (AAAA-MM-DD):', meta.dataInicio || document.getElementById('lc-data').value || today());
+  if(novoInicio===null) return;
+  const novoFim = prompt('Data de término (AAAA-MM-DD, deixe vazio se não souber):', meta.dataFim || '');
+  if(novoFim===null) return;
+  store.contratosMeta[chave] = { ...meta, dataInicio: novoInicio, dataFim: novoFim || null, periodicidade: meta.periodicidade || document.getElementById('lc-periodicidade').value };
+  saveStore();
+  document.getElementById('lc-contrato-datas-txt').textContent = `Início ${fmtDateBR(novoInicio)} · Término ${novoFim?fmtDateBR(novoFim):'—'}`;
+  showToast('Datas do contrato corrigidas');
+  renderAll();
 }
 function lcSetModalidadePag(v, btn){
   document.getElementById('lc-modalidade-pag').value = v;
@@ -1204,7 +1254,6 @@ function lcResetForm(){
   document.getElementById('lc-data').value = today();
   document.getElementById('lc-custo').value='';
   document.getElementById('lc-obs').value='';
-  document.getElementById('lc-datafim').value='';
   document.getElementById('lc-modalidade-pag').value='padrao';
   document.getElementById('lc-dias-pag').value='5';
   document.getElementById('lc-diaspag-wrap').classList.add('hide');
@@ -1286,7 +1335,9 @@ function lcEditar(id){
   if(l.recorrente){
     setChipValue('lc-periodicidade', l.periodicidade||'mensal');
     const meta = store.contratosMeta[l.cliente+'|'+l.servico];
-    document.getElementById('lc-datafim').value = (meta && meta.dataFim) || '';
+    document.getElementById('lc-contrato-datas-txt').textContent = meta
+      ? `Início ${fmtDateBR(meta.dataInicio)} · Término ${meta.dataFim?fmtDateBR(meta.dataFim):'—'}`
+      : 'Datas do contrato não configuradas ainda';
     const modPag = l.modalidadePag || 'padrao';
     document.getElementById('lc-modalidade-pag').value = modPag;
     highlightChip('lc-modalidade-chips', modPag);
@@ -1342,17 +1393,20 @@ function lcSalvar(){
     obj.dataPagamento = null;
   }
   const idx = store.lancamentos.findIndex(l=>l.id===id);
+  const criandoNovo = idx<0;
   if(idx>=0){
     store.lancamentos[idx] = {...store.lancamentos[idx], ...obj};
   } else {
     obj.valorLiquido = valor; obj.taxaPct = 0; obj.liquidoConfirmado = false;
     store.lancamentos.push(obj);
   }
-  if(obj.recorrente){
+  if(obj.recorrente && criandoNovo){
+    // âncora do contrato — só gravada na criação. Edições seguintes de qualquer cobrança
+    // nunca mais mexem nisso, evitando o desalinhamento de datas.
     const chave = cliente+'|'+obj.servico;
-    const dataFim = document.getElementById('lc-datafim').value;
-    if(dataFim) store.contratosMeta[chave] = {...store.contratosMeta[chave], dataFim};
-    else if(store.contratosMeta[chave]) delete store.contratosMeta[chave].dataFim;
+    if(!store.contratosMeta[chave]){
+      store.contratosMeta[chave] = { dataInicio: obj.data, dataFim: addMesesData(obj.data,12), periodicidade: obj.periodicidade };
+    }
   }
   saveStore();
   closeModal('modal-lanc');
@@ -1642,42 +1696,56 @@ function idOcorrencia(cliente, servico, mes){
   const slug = (cliente+'-'+servico).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
   return 'oc-'+slug+'-'+mes;
 }
+function addMesesData(dataStr, meses){
+  const d = new Date(dataStr+'T00:00:00');
+  d.setMonth(d.getMonth()+meses);
+  return d.toISOString().split('T')[0];
+}
+function passoPeriodicidade(periodicidade){
+  return {bimestral:2, trimestral:3, quadrimestral:4, semestral:6}[periodicidade] || 1; // mensal/quinzenal = 1
+}
+// Calcula (e persiste, se ainda não existir) a ocorrência de um contrato pra um mês específico,
+// sempre com base na data de início do contrato — nunca "a próxima depois da última encontrada".
+// Editar uma cobrança específica nunca mais afeta as outras, porque a âncora nunca muda sozinha.
 function ocorrenciaParaMes(cliente, servico, mesAlvo){
-  const horizonte = proximoMesStr(todayMonth()); // não gera além do mês atual + 1
-  let candidatos = store.lancamentos.filter(l=>l.recorrente && l.cliente===cliente && l.servico===servico && l.status!=='cancelado');
-  if(!candidatos.length) return null;
-  candidatos.sort((a,b)=>(a.data||'').localeCompare(b.data||''));
-  let ultimo = candidatos[candidatos.length-1];
-  if(mesAlvo > horizonte && ultimo.data.slice(0,7) < mesAlvo){
-    // mês muito no futuro — não gera ainda, evita acumular pendências fantasmas
-    return null;
-  }
-  let criouAlgum = false, tentativas = 0;
-  while(ultimo.data.slice(0,7) < mesAlvo && tentativas < 36){
-    const novaData = avancarDataPeriodicidade(ultimo.data, ultimo.periodicidade);
-    const novoId = idOcorrencia(ultimo.cliente, ultimo.servico, novaData.slice(0,7));
-    const jaExiste = store.lancamentos.find(x=>x.id===novoId);
-    if(jaExiste){ ultimo = jaExiste; tentativas++; continue; } // já foi gerado (por este ou outro aparelho), não duplica
-    const novo = {
-      id: novoId, cliente:ultimo.cliente, servico:ultimo.servico, orc:ultimo.orc||'',
-      valor:ultimo.valor, data: novaData,
-      statusPag:'pendente', forma:ultimo.forma, status:'agendado',
-      valorLiquido: ultimo.valor, taxaPct: 0, liquidoConfirmado: false, agendavel: true,
-      recorrente:true, periodicidade:ultimo.periodicidade,
-      modalidadePag: ultimo.modalidadePag||'padrao', diasParaPagamento: ultimo.diasParaPagamento||5,
-      categoria:ultimo.categoria||'Manutenção preventiva', custo:ultimo.custo||0,
-      obs:'', criadoEm: Date.now()
-    };
-    store.lancamentos.push(novo);
-    ultimo = novo; criouAlgum = true; tentativas++;
-  }
-  if(criouAlgum) saveStore();
-  return store.lancamentos.filter(l=>l.recorrente && l.cliente===cliente && l.servico===servico && l.status!=='cancelado' && dentroDoMes(l.data,mesAlvo)).sort((a,b)=>(a.data||'').localeCompare(b.data||''))[0] || null;
+  const chave = cliente+'|'+servico;
+  const meta = store.contratosMeta[chave];
+  if(!meta || !meta.dataInicio) return null; // contrato sem data de início configurada
+  if(mesAlvo < meta.dataInicio.slice(0,7)) return null; // mês antes do contrato começar
+  if(meta.dataFim && mesAlvo > meta.dataFim.slice(0,7)) return null; // contrato já encerrado nesse mês
+
+  const passo = passoPeriodicidade(meta.periodicidade);
+  const dif = diffMeses(meta.dataInicio.slice(0,7), mesAlvo);
+  if(dif < 0 || dif % passo !== 0) return null; // esse mês não tem cobrança dessa periodicidade
+
+  const id = idOcorrencia(cliente, servico, mesAlvo);
+  const existente = store.lancamentos.find(l=>l.id===id);
+  if(existente) return existente;
+
+  // usa o lançamento mais recente da série como modelo (valor, forma, categoria...)
+  const modelos = store.lancamentos.filter(l=>l.recorrente && l.cliente===cliente && l.servico===servico && l.status!=='cancelado').sort((a,b)=>(a.data||'').localeCompare(b.data||''));
+  const modelo = modelos[modelos.length-1];
+  if(!modelo) return null;
+
+  const novo = {
+    id, cliente, servico, orc: modelo.orc||'',
+    valor: modelo.valor, data: addMesesData(meta.dataInicio, dif),
+    statusPag:'pendente', forma: modelo.forma, status:'agendado',
+    valorLiquido: modelo.valor, taxaPct: 0, liquidoConfirmado: false, agendavel: true,
+    recorrente:true, periodicidade: meta.periodicidade,
+    modalidadePag: modelo.modalidadePag||'padrao', diasParaPagamento: modelo.diasParaPagamento||5,
+    categoria: modelo.categoria||'Manutenção preventiva', custo: modelo.custo||0,
+    dataPagamento: null, obs:'', criadoEm: Date.now()
+  };
+  store.lancamentos.push(novo);
+  saveStore();
+  return novo;
 }
 function garantirOcorrenciasDoMes(mes){
-  const series = {};
-  store.lancamentos.forEach(l=>{ if(l.recorrente && l.status!=='cancelado') series[l.cliente+'|'+l.servico] = l; });
-  Object.values(series).forEach(l=> ocorrenciaParaMes(l.cliente, l.servico, mes));
+  Object.keys(store.contratosMeta).forEach(chave=>{
+    const [cliente, servico] = chave.split('|');
+    ocorrenciaParaMes(cliente, servico, mes);
+  });
 }
 
 function renderEntradas(){
@@ -2065,27 +2133,15 @@ function mesesRestantesDoAno(mesAtual){
   return arr;
 }
 const NOMES_MES_CURTO = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-function serieValeNoMes(l, mesAlvo){
-  if(l.periodicidade==='mensal' || l.periodicidade==='quinzenal' || !l.periodicidade) return true;
-  const passo = {bimestral:2, trimestral:3, quadrimestral:4, semestral:6}[l.periodicidade] || 1;
-  const dif = diffMeses(l.data.slice(0,7), mesAlvo);
-  return dif>=0 && dif % passo === 0;
-}
 function projecaoAnual(){
-  const horizonte = proximoMesStr(todayMonth());
   const meses = mesesRestantesDoAno(todayMonth());
-  const series = {};
-  store.lancamentos.forEach(l=>{ if(l.recorrente && l.status!=='cancelado'){ const key=l.cliente+'|'+l.servico; if(!series[key] || l.data>series[key].data) series[key]=l; } });
   return meses.map(mes=>{
     let total = 0;
-    Object.values(series).forEach(l=>{
-      const meta = store.contratosMeta[l.cliente+'|'+l.servico];
-      if(meta && meta.dataFim && mes > meta.dataFim.slice(0,7)) return; // contrato já encerrado nesse mês
-      if(!serieValeNoMes(l, mes)) return;
-      const real = store.lancamentos.find(x=>x.recorrente && x.cliente===l.cliente && x.servico===l.servico && x.status!=='cancelado' && dentroDoMes(x.data,mes));
-      total += real ? parseFloat(real.valor||0) : parseFloat(l.valor||0);
+    Object.keys(store.contratosMeta).forEach(chave=>{
+      const oc = ocorrenciaParaMes(...chave.split('|'), mes);
+      if(oc) total += parseFloat(oc.valor||0);
     });
-    return { mes, total, real: mes<=horizonte };
+    return { mes, total, real: true }; // agora sempre é cálculo real, não estimativa solta
   });
 }
 function graficoAnoHtml(){
