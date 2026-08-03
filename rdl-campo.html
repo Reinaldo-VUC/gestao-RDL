@@ -403,7 +403,12 @@ label{font-size:10.5px;color:var(--mu);margin-bottom:5px;display:block;font-weig
     </div>
     <div class="field-row">
       <div class="field"><label>Valor (R$)</label><input id="lc-valor" type="number" step="0.01" placeholder="0,00"></div>
-      <div class="field"><label>Data</label><input id="lc-data" type="date"></div>
+      <div class="field"><label id="lc-data-label">Data</label><input id="lc-data" type="date"></div>
+    </div>
+    <div class="field">
+      <label>Data de pagamento (se diferente)</label>
+      <input id="lc-datapag" type="date">
+      <p style="font-size:10px;color:var(--mu);margin-top:4px;">Deixe igual se recebe no mesmo dia do serviço. A data de pagamento é o que conta pro saldo do mês.</p>
     </div>
     <div class="field">
       <label>Status do pagamento</label>
@@ -793,6 +798,7 @@ function initApp(user){
   seedCategoriasRetroativas();
   limparProjecoesExcedentes();
   migrarParcelasReferencia();
+  limparDuplicatasRecorrentes();
   seedDataFimSLAlimentos();
   renderAll();
 }
@@ -1012,6 +1018,38 @@ function migrarParcelasReferencia(){
   store.config.migracaoParcelaRefV1 = true;
   saveStore();
 }
+
+// ═══════════════════════════════════════════════
+// LIMPEZA — remove cobranças de contrato duplicadas (mesmo cliente+serviço+mês)
+// causadas por celular e PC gerando ao mesmo tempo antes do ID determinístico existir
+// ═══════════════════════════════════════════════
+function limparDuplicatasRecorrentes(){
+  if(store.config && store.config.limpezaDuplicatasV1) return;
+  if(!store.config) store.config = {};
+  const grupos = {};
+  store.lancamentos.forEach(l=>{
+    if(!l.recorrente || !l.data) return;
+    const key = l.cliente+'|'+l.servico+'|'+l.data.slice(0,7);
+    if(!grupos[key]) grupos[key] = [];
+    grupos[key].push(l);
+  });
+  const idsRemover = new Set();
+  Object.values(grupos).forEach(grupo=>{
+    if(grupo.length<=1) return;
+    grupo.sort((a,b)=>{
+      if(a.statusPag==='pago' && b.statusPag!=='pago') return -1;
+      if(b.statusPag==='pago' && a.statusPag!=='pago') return 1;
+      return (a.criadoEm||0)-(b.criadoEm||0);
+    });
+    grupo.slice(1).forEach(l=>idsRemover.add(l.id));
+  });
+  if(idsRemover.size){
+    store.lancamentos = store.lancamentos.filter(l=>!idsRemover.has(l.id));
+    showToast(`${idsRemover.size} cobrança(s) duplicada(s) removida(s)`);
+  }
+  store.config.limpezaDuplicatasV1 = true;
+  saveStore();
+}
 function seedDataFimSLAlimentos(){
   if(store.config && store.config.seedDataFimSLV1) return;
   if(!store.config) store.config = {};
@@ -1110,6 +1148,7 @@ function setTipoServicoUI(isRecorrente){
   document.getElementById('lc-recorrente-hidden').value = isRecorrente ? 'true' : 'false';
   document.getElementById('lc-periodicidade-wrap').classList.toggle('hide', !isRecorrente);
   document.getElementById('lc-agendavel-wrap').classList.toggle('hide', isRecorrente);
+  document.getElementById('lc-data-label').textContent = isRecorrente ? 'Data de início' : 'Data';
   if(isRecorrente) lcSetAgendavelValor(true); // contrato sempre aparece na agenda
 }
 function lcSetModalidadePag(v, btn){
@@ -1169,6 +1208,7 @@ function lcResetForm(){
   document.getElementById('lc-modalidade-pag').value='padrao';
   document.getElementById('lc-dias-pag').value='5';
   document.getElementById('lc-diaspag-wrap').classList.add('hide');
+  document.getElementById('lc-datapag').value='';
   setTipoServicoUI(false);
   lcSetAgendavelValor(true);
   document.getElementById('lc-btn-del').classList.add('hide');
@@ -1229,6 +1269,7 @@ function lcEditar(id){
   document.getElementById('lc-orc').value = l.orc||'';
   document.getElementById('lc-valor').value = l.valor||'';
   document.getElementById('lc-data').value = l.data||today();
+  document.getElementById('lc-datapag').value = l.dataPagamento||'';
   document.getElementById('lc-custo').value = l.custo||'';
   document.getElementById('lc-obs').value = l.obs||'';
   setChipValue('lc-statuspag', l.statusPag||'pendente');
@@ -1292,8 +1333,13 @@ function lcSalvar(){
     obs: document.getElementById('lc-obs').value.trim(),
     criadoEm: Date.now()
   };
-  if(obj.recorrente && obj.modalidadePag==='execucao' && obj.status==='concluido'){
-    obj.dataPagamentoPrevista = addDias(obj.data, obj.diasParaPagamento);
+  const dataPagManual = document.getElementById('lc-datapag').value;
+  if(dataPagManual){
+    obj.dataPagamento = dataPagManual;
+  } else if(obj.recorrente && obj.modalidadePag==='execucao' && obj.status==='concluido'){
+    obj.dataPagamento = addDias(obj.data, obj.diasParaPagamento);
+  } else {
+    obj.dataPagamento = null;
   }
   const idx = store.lancamentos.findIndex(l=>l.id===id);
   if(idx>=0){
@@ -1489,6 +1535,8 @@ function renderAgenda(){
 
 function renderAgendaSemana(){
   const {dias, label} = getSemanaAtual(agOffset);
+  garantirOcorrenciasDoMes(dias[0].iso.slice(0,7));
+  if(dias[6].iso.slice(0,7) !== dias[0].iso.slice(0,7)) garantirOcorrenciasDoMes(dias[6].iso.slice(0,7));
   document.getElementById('ag-periodo-lbl').textContent = label;
   const hoje = today();
   const livres = dias.filter(d=>!temAgendamentoNoDia(d.iso) && d.dow!==0);
@@ -1520,6 +1568,7 @@ function renderAgendaMes(){
   document.getElementById('ag-free-banner').innerHTML='';
   document.getElementById('ag-free-banner').className='free-banner hide';
   const mesStr = `${y}-${String(m+1).padStart(2,'0')}`;
+  garantirOcorrenciasDoMes(mesStr);
   const items = store.lancamentos.filter(l=>dentroDoMes(l.data,mesStr) && l.agendavel!==false).sort((a,b)=>(a.data||'').localeCompare(b.data||''));
   const byDay = {};
   items.forEach(l=>{ (byDay[l.data]=byDay[l.data]||[]).push(l); });
@@ -1580,7 +1629,7 @@ function addDias(dataStr, dias){
   return d.toISOString().split('T')[0];
 }
 function dataEfetivaCobranca(l){
-  return (l.modalidadePag==='execucao' && l.dataPagamentoPrevista) ? l.dataPagamentoPrevista : l.data;
+  return l.dataPagamento || l.data;
 }
 // Garante e retorna a ocorrência de um contrato recorrente para um mês específico,
 // projetando (e persistindo) as próximas ocorrências automaticamente se necessário.
@@ -1588,6 +1637,10 @@ function proximoMesStr(mesStr){
   const [y,m] = mesStr.split('-').map(Number);
   const d = new Date(y, m, 1); // já avança 1 mês
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+function idOcorrencia(cliente, servico, mes){
+  const slug = (cliente+'-'+servico).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
+  return 'oc-'+slug+'-'+mes;
 }
 function ocorrenciaParaMes(cliente, servico, mesAlvo){
   const horizonte = proximoMesStr(todayMonth()); // não gera além do mês atual + 1
@@ -1601,9 +1654,13 @@ function ocorrenciaParaMes(cliente, servico, mesAlvo){
   }
   let criouAlgum = false, tentativas = 0;
   while(ultimo.data.slice(0,7) < mesAlvo && tentativas < 36){
+    const novaData = avancarDataPeriodicidade(ultimo.data, ultimo.periodicidade);
+    const novoId = idOcorrencia(ultimo.cliente, ultimo.servico, novaData.slice(0,7));
+    const jaExiste = store.lancamentos.find(x=>x.id===novoId);
+    if(jaExiste){ ultimo = jaExiste; tentativas++; continue; } // já foi gerado (por este ou outro aparelho), não duplica
     const novo = {
-      id: uid(), cliente:ultimo.cliente, servico:ultimo.servico, orc:ultimo.orc||'',
-      valor:ultimo.valor, data: avancarDataPeriodicidade(ultimo.data, ultimo.periodicidade),
+      id: novoId, cliente:ultimo.cliente, servico:ultimo.servico, orc:ultimo.orc||'',
+      valor:ultimo.valor, data: novaData,
       statusPag:'pendente', forma:ultimo.forma, status:'agendado',
       valorLiquido: ultimo.valor, taxaPct: 0, liquidoConfirmado: false, agendavel: true,
       recorrente:true, periodicidade:ultimo.periodicidade,
@@ -1617,14 +1674,19 @@ function ocorrenciaParaMes(cliente, servico, mesAlvo){
   if(criouAlgum) saveStore();
   return store.lancamentos.filter(l=>l.recorrente && l.cliente===cliente && l.servico===servico && l.status!=='cancelado' && dentroDoMes(l.data,mesAlvo)).sort((a,b)=>(a.data||'').localeCompare(b.data||''))[0] || null;
 }
+function garantirOcorrenciasDoMes(mes){
+  const series = {};
+  store.lancamentos.forEach(l=>{ if(l.recorrente && l.status!=='cancelado') series[l.cliente+'|'+l.servico] = l; });
+  Object.values(series).forEach(l=> ocorrenciaParaMes(l.cliente, l.servico, mes));
+}
 
 function renderEntradas(){
   const mes = mesFoco;
 
   // garante que todo contrato conhecido já tenha uma ocorrência gerada pro mês em foco
+  garantirOcorrenciasDoMes(mes);
   const seriesConhecidas = {};
   store.lancamentos.forEach(l=>{ if(l.recorrente && l.status!=='cancelado') seriesConhecidas[l.cliente+'|'+l.servico] = l; });
-  Object.values(seriesConhecidas).forEach(l=> ocorrenciaParaMes(l.cliente, l.servico, mes));
 
   const recebidoMes = store.lancamentos.filter(l=>l.statusPag==='pago' && dentroDoMes(dataEfetivaCobranca(l),mes)).reduce((s,l)=>s+parseFloat(l.valor||0),0);
   const pendenteMes = store.lancamentos.filter(l=>l.statusPag==='pendente' && l.status!=='cancelado' && dentroDoMes(dataEfetivaCobranca(l),mes)).reduce((s,l)=>s+parseFloat(l.valor||0),0);
@@ -1695,7 +1757,7 @@ function liquidoAnotacao(l){
 }
 function pagamentoExecucaoAnotacao(l){
   if(l.modalidadePag!=='execucao') return '';
-  if(l.dataPagamentoPrevista) return `<div style="font-size:9.5px;color:var(--ic);margin-top:2px">paga na execução — previsto ${fmtDateBR(l.dataPagamentoPrevista)}</div>`;
+  if(l.dataPagamento) return `<div style="font-size:9.5px;color:var(--ic);margin-top:2px">paga na execução — previsto ${fmtDateBR(l.dataPagamento)}</div>`;
   return `<div style="font-size:9.5px;color:var(--mu);margin-top:2px">paga na execução — aguardando conclusão</div>`;
 }
 
