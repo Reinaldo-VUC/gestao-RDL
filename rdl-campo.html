@@ -2403,11 +2403,15 @@ document.getElementById('dr-data').value = today();
 document.getElementById('cc-data').value = today();
 document.getElementById('ec-mes').value = todayMonth();
 
-// Registra o service worker — necessário pro navegador reconhecer como app instalável de verdade
+// Remove qualquer service worker que tenha ficado travado de uma versão anterior,
+// pra garantir que o app carregue normal sem interferência.
 if('serviceWorker' in navigator){
-  window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('sw.js').catch(()=>{});
-  });
+  navigator.serviceWorker.getRegistrations().then(regs=>{
+    regs.forEach(reg=>reg.unregister());
+  }).catch(()=>{});
+  if(window.caches){
+    caches.keys().then(names=>names.forEach(n=>caches.delete(n))).catch(()=>{});
+  }
 }
 
 </script>
