@@ -2403,12 +2403,15 @@ document.getElementById('dr-data').value = today();
 document.getElementById('cc-data').value = today();
 document.getElementById('ec-mes').value = todayMonth();
 
-// Remove qualquer service worker que tenha ficado travado de uma versão anterior,
-// pra garantir que o app carregue normal sem interferência.
+// Limpa qualquer service worker travado de uma versão anterior, e registra a versão corrigida
 if('serviceWorker' in navigator){
   navigator.serviceWorker.getRegistrations().then(regs=>{
-    regs.forEach(reg=>reg.unregister());
-  }).catch(()=>{});
+    return Promise.all(regs.map(reg=>reg.unregister()));
+  }).catch(()=>{}).then(()=>{
+    window.addEventListener('load', ()=>{
+      navigator.serviceWorker.register('sw.js').catch(()=>{});
+    });
+  });
   if(window.caches){
     caches.keys().then(names=>names.forEach(n=>caches.delete(n))).catch(()=>{});
   }
