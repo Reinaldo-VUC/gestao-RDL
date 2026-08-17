@@ -2402,6 +2402,14 @@ document.getElementById('lc-data').value = today();
 document.getElementById('dr-data').value = today();
 document.getElementById('cc-data').value = today();
 document.getElementById('ec-mes').value = todayMonth();
+
+// Registra o service worker — necessário pro navegador reconhecer como app instalável de verdade
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js').catch(()=>{});
+  });
+}
+
 </script>
 </body>
 </html>
