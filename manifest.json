@@ -2,7 +2,7 @@
   "name": "RDL Campo",
   "short_name": "RDL Campo",
   "description": "Agenda, lançamentos e financeiro rápido da RDL Eletro Clima",
-  "start_url": ".",
+  "start_url": "rdl-campo.html",
   "display": "standalone",
   "background_color": "#080c12",
   "theme_color": "#080c12",
