@@ -547,8 +547,10 @@ label{font-size:10.5px;color:var(--mu);margin-bottom:5px;display:block;font-weig
       <div class="chip-row" id="dr-forma-chips">
         <button class="chip active" data-v="dinheiro" onclick="drSetForma('dinheiro',this)">Dinheiro</button>
         <button class="chip" data-v="pix" onclick="drSetForma('pix',this)">Pix</button>
+        <button class="chip" data-v="pix_agendado" onclick="drSetForma('pix_agendado',this)">Pix Agendado</button>
         <button class="chip" data-v="cartao" onclick="drSetForma('cartao',this)">Cartão</button>
         <button class="chip" data-v="boleto" onclick="drSetForma('boleto',this)">Boleto</button>
+        <button class="chip" data-v="boleto_agendado" onclick="drSetForma('boleto_agendado',this)">Boleto Agendado</button>
         <button class="chip" data-v="transferencia" onclick="drSetForma('transferencia',this)">Transferência</button>
       </div>
       <input type="hidden" id="dr-forma" value="dinheiro">
@@ -560,7 +562,7 @@ label{font-size:10.5px;color:var(--mu);margin-bottom:5px;display:block;font-weig
         <button class="chip" data-v="pendente" onclick="lcSetChip('dr-status',this)">Pendente</button>
       </div>
       <input type="hidden" id="dr-status" value="pago">
-      <p class="hide" id="dr-boleto-aviso" style="font-size:10px;color:var(--ic);margin-top:6px;">Boleto/Pix agendado com vencimento futuro fica pendente automaticamente e muda pra pago sozinho na data — sem precisar mexer manualmente.</p>
+      <p class="hide" id="dr-boleto-aviso" style="font-size:10px;color:var(--ic);margin-top:6px;">Boleto Agendado / Pix Agendado com vencimento futuro fica pendente automaticamente e muda pra pago sozinho na data — sem precisar mexer manualmente.</p>
     </div>
     <input type="hidden" id="dr-id">
     <div class="modal-actions">
@@ -590,8 +592,10 @@ label{font-size:10.5px;color:var(--mu);margin-bottom:5px;display:block;font-weig
       <div class="chip-row" id="dv-forma-chips">
         <button class="chip active" data-v="dinheiro" onclick="lcSetChip('dv-forma',this)">Dinheiro</button>
         <button class="chip" data-v="pix" onclick="lcSetChip('dv-forma',this)">Pix</button>
+        <button class="chip" data-v="pix_agendado" onclick="lcSetChip('dv-forma',this)">Pix Agendado</button>
         <button class="chip" data-v="cartao" onclick="lcSetChip('dv-forma',this)">Cartão</button>
         <button class="chip" data-v="boleto" onclick="lcSetChip('dv-forma',this)">Boleto</button>
+        <button class="chip" data-v="boleto_agendado" onclick="lcSetChip('dv-forma',this)">Boleto Agendado</button>
         <button class="chip" data-v="transferencia" onclick="lcSetChip('dv-forma',this)">Transferência</button>
       </div>
       <input type="hidden" id="dv-forma" value="dinheiro">
@@ -631,12 +635,14 @@ label{font-size:10.5px;color:var(--mu);margin-bottom:5px;display:block;font-weig
       <div class="chip-row" id="df-forma-chips">
         <button class="chip active" data-v="dinheiro" onclick="lcSetChip('df-forma',this)">Dinheiro</button>
         <button class="chip" data-v="pix" onclick="lcSetChip('df-forma',this)">Pix</button>
+        <button class="chip" data-v="pix_agendado" onclick="lcSetChip('df-forma',this)">Pix Agendado</button>
         <button class="chip" data-v="cartao" onclick="lcSetChip('df-forma',this)">Cartão</button>
         <button class="chip" data-v="boleto" onclick="lcSetChip('df-forma',this)">Boleto</button>
+        <button class="chip" data-v="boleto_agendado" onclick="lcSetChip('df-forma',this)">Boleto Agendado</button>
         <button class="chip" data-v="transferencia" onclick="lcSetChip('df-forma',this)">Transferência</button>
       </div>
       <input type="hidden" id="df-forma" value="dinheiro">
-      <p style="font-size:10px;color:var(--mu);margin-top:6px;">Boleto e Pix agendado: fica pendente até o dia do vencimento e vira pago sozinho. Outras formas continuam assumindo pago por padrão.</p>
+      <p style="font-size:10px;color:var(--mu);margin-top:6px;">Boleto Agendado e Pix Agendado: ficam pendentes até o dia do vencimento e viram pagos sozinhos. Boleto e Pix normais (e as demais formas) continuam assumindo pago por padrão, você confirma manualmente quando quiser.</p>
     </div>
     <input type="hidden" id="df-id">
     <div class="modal-actions">
@@ -1171,7 +1177,7 @@ function autoConfirmarBoletosVencidos(){
   const hoje = today();
   let mudouAlgo = false;
   store.despesasVar.forEach(d=>{
-    if((d.forma==='boleto' || d.forma==='pix') && d.statusPag==='pendente' && d.data<=hoje){
+    if((d.forma==='boleto_agendado' || d.forma==='pix_agendado') && d.statusPag==='pendente' && d.data<=hoje){
       d.statusPag = 'pago';
       mudouAlgo = true;
     }
@@ -2259,7 +2265,7 @@ function drSetForma(v, btn){
 function drAtualizarTravaBoleto(){
   const forma = document.getElementById('dr-forma').value;
   const data = document.getElementById('dr-data').value || today();
-  const ehBoletoFuturo = (forma==='boleto' || forma==='pix') && data > today();
+  const ehBoletoFuturo = (forma==='boleto_agendado' || forma==='pix_agendado') && data > today();
   document.getElementById('dr-boleto-aviso').classList.toggle('hide', !ehBoletoFuturo);
   if(ehBoletoFuturo){
     setChipValue('dr-status', 'pendente');
@@ -2275,7 +2281,7 @@ function drSalvar(){
   const forma = document.getElementById('dr-forma').value;
   const data = document.getElementById('dr-data').value || today();
   let statusPag = document.getElementById('dr-status').value;
-  if((forma==='boleto' || forma==='pix') && data > today()) statusPag = 'pendente'; // trava — boleto/pix agendado futuro nunca nasce pago
+  if((forma==='boleto_agendado' || forma==='pix_agendado') && data > today()) statusPag = 'pendente'; // trava — boleto/pix agendado futuro nunca nasce pago
   const obj = {
     id, cat: document.getElementById('dr-cat').value,
     valor, data,
@@ -2393,7 +2399,7 @@ function statusEfetivoFixa(d, mes){
   // se o usuário já mexeu manualmente nesse mês, respeita a escolha dele
   if(d.statusPorMes && d.statusPorMes[mes]!==undefined) return d.statusPorMes[mes];
   // boleto/pix agendado: só conta como pago quando a data de vencimento chegar
-  if(d.forma==='boleto' || d.forma==='pix'){
+  if(d.forma==='boleto_agendado' || d.forma==='pix_agendado'){
     const vencimento = montarDataComDia(mes, d.dia||1);
     return vencimento <= today() ? 'pago' : 'pendente';
   }
@@ -2404,7 +2410,7 @@ function dvValorMes(d, mes){
 }
 function dvStatusMes(d, mes){
   if(d.porMes && d.porMes[mes] && d.porMes[mes].pago!==undefined) return d.porMes[mes].pago ? 'pago' : 'pendente';
-  if(d.forma==='boleto' || d.forma==='pix'){
+  if(d.forma==='boleto_agendado' || d.forma==='pix_agendado'){
     const vencimento = montarDataComDia(mes, d.dia||1);
     return vencimento <= today() ? 'pago' : 'pendente';
   }
@@ -2668,8 +2674,8 @@ function renderDespesas(){
   const recentes = [...store.despesasVar].filter(d=>dentroDoMes(d.data,mes)).sort((a,b)=>(b.data||'').localeCompare(a.data||''));
   document.getElementById('desp-var-body').innerHTML = recentes.length ? recentes.map(d=>{
     const st = d.statusPag || 'pago';
-    const formaLbl = ({pix:'Pix',dinheiro:'Dinheiro',cartao:'Cartão',boleto:'Boleto',transferencia:'Transferência'})[d.forma] || '';
-    const anotacaoBoleto = ((d.forma==='boleto' || d.forma==='pix') && st==='pendente') ? `<div style="font-size:9.5px;color:var(--ic);margin-top:2px">desconta sozinho em ${fmtDateBR(d.data)}</div>` : '';
+    const formaLbl = ({pix:'Pix',pix_agendado:'Pix Agendado',dinheiro:'Dinheiro',cartao:'Cartão',boleto:'Boleto',boleto_agendado:'Boleto Agendado',transferencia:'Transferência'})[d.forma] || '';
+    const anotacaoBoleto = ((d.forma==='boleto_agendado' || d.forma==='pix_agendado') && st==='pendente') ? `<div style="font-size:9.5px;color:var(--ic);margin-top:2px">desconta sozinho em ${fmtDateBR(d.data)}</div>` : '';
     return `<div class="mini-row st-${st}" style="cursor:pointer" onclick="drEditar('${d.id}')">
       <div class="mini-l"><b>${d.cat}${d.desc?' · '+d.desc:''}</b><span>${fmtDateBR(d.data)}${formaLbl?' · '+formaLbl:''}</span>${anotacaoBoleto}</div>
       <div class="mini-r"><b>${R(d.valor)}</b>${drToggleHtml(d,st)}</div>
