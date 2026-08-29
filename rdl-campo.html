@@ -276,12 +276,21 @@ label{font-size:10.5px;color:var(--mu);margin-bottom:5px;display:block;font-weig
       <button id="ag-seg-sem" class="active" onclick="agSetModo('semana')">Semana</button>
       <button id="ag-seg-mes" onclick="agSetModo('mes')">Mês</button>
     </div>
+    <div class="chip-row" style="margin-bottom:12px" id="ag-filtro-chips">
+      <button class="chip active" data-v="todos" onclick="agSetFiltro('todos',this)">Todos</button>
+      <button class="chip" data-v="contratos" onclick="agSetFiltro('contratos',this)">Contratos</button>
+      <button class="chip" data-v="avulsos" onclick="agSetFiltro('avulsos',this)">Avulsos</button>
+    </div>
     <div class="week-nav">
       <div class="week-nav-btns"><button class="icon-btn" onclick="agNav(-1)">◀</button></div>
       <div class="wn-lbl" id="ag-periodo-lbl"></div>
       <div class="week-nav-btns"><button class="icon-btn" onclick="agNav(1)">▶</button></div>
     </div>
     <div class="free-banner" id="ag-free-banner"></div>
+    <div class="card" id="ag-proximas-card" style="display:none">
+      <div class="card-title">Próximas manutenções <span class="sub" onclick="agToggleProximas()" style="cursor:pointer;color:var(--ic)" id="ag-proximas-toggle">esconder</span></div>
+      <div id="ag-proximas-body"></div>
+    </div>
     <div id="ag-lista"></div>
   </div>
 
@@ -604,6 +613,17 @@ label{font-size:10.5px;color:var(--mu);margin-bottom:5px;display:block;font-weig
     <div class="field"><label>Texto</label><textarea id="al-texto" rows="2" placeholder="Ex: Contrato SL Alimentos encerra"></textarea></div>
     <div class="field"><label>Data (opcional)</label><input id="al-data" type="date"></div>
     <div class="modal-actions"><button class="btn btn-primary" onclick="alSalvar()">Salvar alerta</button></div>
+  </div>
+</div>
+
+<!-- MODAL: REAGENDAR RÁPIDO -->
+<div class="modal-bg" id="modal-reagendar">
+  <div class="modal">
+    <div class="modal-hdr"><h3>Reagendar</h3><button class="modal-close" onclick="closeModal('modal-reagendar')">✕</button></div>
+    <p id="ag-reagendar-info" style="font-size:12px;color:var(--mu);margin-bottom:14px;"></p>
+    <div class="field"><label>Nova data</label><input id="ag-reagendar-data" type="date"></div>
+    <input type="hidden" id="ag-reagendar-id">
+    <div class="modal-actions"><button class="btn btn-primary" onclick="agConfirmarReagendar()">Confirmar nova data</button></div>
   </div>
 </div>
 
@@ -1530,6 +1550,17 @@ function renderDashboard(){
       items.push({cls, html:`<div class="alert-item ${cls}"><span>${prefix}</span><span>Contrato <b>${cliente}</b> encerra em <b>${dias} dia${dias!==1?'s':''}</b> — ${fmtDateBR(meta.dataFim)}</span></div>`});
     }
   });
+  const diaHoje = new Date().getDate();
+  const DIA_ALERTA_SEM_VISITA = 25;
+  if(diaHoje >= DIA_ALERTA_SEM_VISITA){
+    Object.keys(store.contratosMeta).forEach(chave=>{
+      const [cliente, servico] = chave.split('|');
+      const oc = ocorrenciaParaMes(cliente, servico, todayMonth());
+      if(oc && oc.agendavel && oc.status==='agendado'){
+        items.push({cls:'alert-warn', html:`<div class="alert-item alert-warn"><span>🟠</span><span>Visita de <b>${cliente}</b> ainda não realizada esse mês</span></div>`});
+      }
+    });
+  }
   alertasBody.innerHTML = items.length ? items.map(i=>i.html).join('') : '<div class="empty-msg">Sem alertas no momento</div>';
 
   // Semana
@@ -1559,6 +1590,8 @@ function renderDashSemana(){
 // ═══════════════════════════════════════════════
 let agModo = 'semana';
 let agOffset = 0;
+let agFiltro = 'todos';
+let agProximasVisivel = true;
 function agSetModo(m){
   agModo = m; agOffset = 0;
   document.getElementById('ag-seg-sem').classList.toggle('active', m==='semana');
@@ -1566,6 +1599,57 @@ function agSetModo(m){
   renderAgenda();
 }
 function agNav(dir){ agOffset += dir; renderAgenda(); }
+function agSetFiltro(v, btn){
+  agFiltro = v;
+  btn.parentElement.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
+  btn.classList.add('active');
+  renderAgenda();
+}
+function agFiltraItem(l){
+  if(agFiltro==='contratos') return !!l.recorrente;
+  if(agFiltro==='avulsos') return !l.recorrente;
+  return true;
+}
+function agToggleProximas(){
+  agProximasVisivel = !agProximasVisivel;
+  document.getElementById('ag-proximas-toggle').textContent = agProximasVisivel ? 'esconder' : 'mostrar';
+  document.getElementById('ag-proximas-body').classList.toggle('hide', !agProximasVisivel);
+}
+function renderProximasManutencoes(){
+  garantirOcorrenciasDoMes(todayMonth());
+  garantirOcorrenciasDoMes(proximoMesStr(todayMonth()));
+  const hoje = today();
+  const proximas = store.lancamentos
+    .filter(l=>l.recorrente && l.agendavel!==false && l.status==='agendado' && l.data>=hoje)
+    .sort((a,b)=>(a.data||'').localeCompare(b.data||''))
+    .slice(0,6);
+  const card = document.getElementById('ag-proximas-card');
+  if(!proximas.length){ card.style.display='none'; return; }
+  card.style.display='block';
+  document.getElementById('ag-proximas-body').innerHTML = proximas.map(l=>`
+    <div class="mini-row"><div class="mini-l"><b>${l.cliente}</b><span>${l.servico} · ${fmtDateBR(l.data)}</span></div><div class="mini-r"><button class="btn btn-outline btn-sm" onclick="agAbrirReagendar('${l.id}')">📅 Reagendar</button></div></div>`).join('');
+}
+
+// ── REAGENDAR RÁPIDO ─────────────────────────────
+function agAbrirReagendar(id){
+  const l = store.lancamentos.find(x=>x.id===id); if(!l) return;
+  document.getElementById('ag-reagendar-id').value = id;
+  document.getElementById('ag-reagendar-info').textContent = `${l.cliente} — ${l.servico} — data atual: ${fmtDateBR(l.data)}`;
+  document.getElementById('ag-reagendar-data').value = l.data;
+  openModal('modal-reagendar');
+}
+function agConfirmarReagendar(){
+  const id = document.getElementById('ag-reagendar-id').value;
+  const l = store.lancamentos.find(x=>x.id===id); if(!l) return;
+  const novaData = document.getElementById('ag-reagendar-data').value;
+  if(!novaData){ showToast('Escolha uma data'); return; }
+  const dataAntiga = l.data;
+  if(novaData===dataAntiga){ closeModal('modal-reagendar'); return; }
+  l.obs = (l.obs ? l.obs+' | ' : '') + `Reagendado de ${fmtDateBR(dataAntiga)} para ${fmtDateBR(novaData)}`;
+  l.data = novaData;
+  saveStore(); closeModal('modal-reagendar'); renderAll();
+  showToast('Reagendado');
+}
 
 function getSemanaAtual(offsetSemanas){
   offsetSemanas = offsetSemanas||0;
@@ -1600,6 +1684,7 @@ function renderAgendaSemana(){
   const {dias, label} = getSemanaAtual(agOffset);
   garantirOcorrenciasDoMes(dias[0].iso.slice(0,7));
   if(dias[6].iso.slice(0,7) !== dias[0].iso.slice(0,7)) garantirOcorrenciasDoMes(dias[6].iso.slice(0,7));
+  renderProximasManutencoes();
   document.getElementById('ag-periodo-lbl').textContent = label;
   const hoje = today();
   const livres = dias.filter(d=>!temAgendamentoNoDia(d.iso) && d.dow!==0);
@@ -1613,12 +1698,13 @@ function renderAgendaSemana(){
   }
   const lista = document.getElementById('ag-lista');
   lista.innerHTML = dias.map(d=>{
-    const items = store.lancamentos.filter(l=>l.data===d.iso && l.agendavel!==false).sort((a,b)=>(a.criadoEm||0)-(b.criadoEm||0));
+    const todosItens = store.lancamentos.filter(l=>l.data===d.iso && l.agendavel!==false).sort((a,b)=>(a.criadoEm||0)-(b.criadoEm||0));
+    const items = todosItens.filter(agFiltraItem);
     const isToday = d.iso===hoje;
-    const isFree = !items.some(i=>i.status!=='cancelado') && d.dow!==0;
+    const isFree = !todosItens.some(i=>i.status!=='cancelado') && d.dow!==0;
     return `<div class="day-block">
       <div class="day-hdr ${isToday?'today':''}">${d.nome} ${String(d.num).padStart(2,'0')}${isToday?' · hoje':''} ${isFree?'<span class="free-tag">livre</span>':''}</div>
-      ${items.length ? items.map(renderLancItem).join('') : `<div class="empty-msg" style="cursor:pointer;color:var(--ic);border:1px dashed var(--bd);border-radius:10px;padding:14px" onclick="agNovoNoDia('${d.iso}')">+ Agendar nesse dia</div>`}
+      ${items.length ? items.map(renderLancItem).join('') : (todosItens.length ? '<div class="empty-msg">Nada nesse filtro pra esse dia</div>' : `<div class="empty-msg" style="cursor:pointer;color:var(--ic);border:1px dashed var(--bd);border-radius:10px;padding:14px" onclick="agNovoNoDia('${d.iso}')">+ Agendar nesse dia</div>`)}
     </div>`;
   }).join('');
 }
@@ -1632,11 +1718,12 @@ function renderAgendaMes(){
   document.getElementById('ag-free-banner').className='free-banner hide';
   const mesStr = `${y}-${String(m+1).padStart(2,'0')}`;
   garantirOcorrenciasDoMes(mesStr);
-  const items = store.lancamentos.filter(l=>dentroDoMes(l.data,mesStr) && l.agendavel!==false).sort((a,b)=>(a.data||'').localeCompare(b.data||''));
+  renderProximasManutencoes();
+  const items = store.lancamentos.filter(l=>dentroDoMes(l.data,mesStr) && l.agendavel!==false && agFiltraItem(l)).sort((a,b)=>(a.data||'').localeCompare(b.data||''));
   const byDay = {};
   items.forEach(l=>{ (byDay[l.data]=byDay[l.data]||[]).push(l); });
   const lista = document.getElementById('ag-lista');
-  if(!Object.keys(byDay).length){ lista.innerHTML = '<div class="empty-msg">Nenhum lançamento nesse mês</div>'; return; }
+  if(!Object.keys(byDay).length){ lista.innerHTML = '<div class="empty-msg">Nenhum lançamento nesse mês (nesse filtro)</div>'; return; }
   lista.innerHTML = Object.keys(byDay).sort().map(iso=>{
     const d = new Date(iso+'T00:00:00');
     return `<div class="day-block">
@@ -1657,6 +1744,7 @@ function renderLancItem(l){
       <span class="tag tag-forma">${labelForma(l.forma)}</span>
       ${l.recorrente?'<span class="tag tag-rec">Recorrente</span>':''}
       ${l.status==='cancelado'?'<span class="tag tag-cancelado">Cancelado</span>':''}
+      ${l.status!=='cancelado'?`<button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="event.stopPropagation();agAbrirReagendar('${l.id}')">📅 Reagendar</button>`:''}
     </div>
   </div>`;
 }
@@ -1710,6 +1798,12 @@ function addMesesData(dataStr, meses){
   d.setMonth(d.getMonth()+meses);
   return d.toISOString().split('T')[0];
 }
+function montarDataComDia(mesAlvo, dia){
+  const [ano, mesNum] = mesAlvo.split('-').map(Number);
+  const ultimoDiaDoMes = new Date(ano, mesNum, 0).getDate(); // dia 0 do mês seguinte = último dia deste mês
+  const diaSeguro = Math.min(Math.max(1,dia), ultimoDiaDoMes);
+  return `${ano}-${String(mesNum).padStart(2,'0')}-${String(diaSeguro).padStart(2,'0')}`;
+}
 function passoPeriodicidade(periodicidade){
   return {bimestral:2, trimestral:3, quadrimestral:4, semestral:6}[periodicidade] || 1; // mensal/quinzenal = 1
 }
@@ -1737,10 +1831,15 @@ function ocorrenciaParaMes(cliente, servico, mesAlvo){
   const passo = passoPeriodicidade(meta.periodicidade);
   const ehMesDeVisita = (dif % passo === 0); // periodicidade decide SÓ isso, a agenda
 
+  // o DIA vem do último lançamento real da série (se foi reagendado, o próximo já nasce nesse novo dia)
+  // o MÊS continua fixo pela âncora do contrato — só o dia é adaptativo
+  const diaRef = parseInt(modelo.data.split('-')[2]);
+  const dataOcorrencia = montarDataComDia(mesAlvo, diaRef);
+
   const id = idOcorrencia(cliente, servico, mesAlvo);
   const novo = {
     id, cliente, servico, orc: modelo.orc||'',
-    valor: modelo.valor, data: addMesesData(meta.dataInicio, dif),
+    valor: modelo.valor, data: dataOcorrencia,
     statusPag:'pendente', forma: modelo.forma, status:'agendado',
     valorLiquido: modelo.valor, taxaPct: 0, liquidoConfirmado: false,
     agendavel: ehMesDeVisita, // só entra na agenda nos meses da periodicidade; pagamento é sempre gerado
