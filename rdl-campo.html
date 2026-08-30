@@ -53,7 +53,7 @@ body{font-family:"DM Mono",monospace;background:var(--bg);color:var(--txt);min-h
 @media(min-width:900px){
   .main{max-width:1080px;}
   #dash-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:18px;align-items:start;}
-  .bottomnav{max-width:1080px;left:50%;transform:translateX(-50%);right:auto;width:100%;}
+  .bottomnav{max-width:1080px;margin:0 auto;}
 }
 .hide{display:none!important;}
 
@@ -275,22 +275,22 @@ label{font-size:10.5px;color:var(--mu);margin-bottom:5px;display:block;font-weig
           <div class="kpi-box"><div class="k-label">Custo da dívida (mês)</div><div class="k-val rd" id="dash-k-dividas">R$ 0</div></div>
           <div class="kpi-box"><div class="k-label">Ticket médio</div><div class="k-val ic" id="dash-k-ticket">R$ 0</div></div>
         </div>
-      </div>
 
-      <div>
-        <div class="card" id="dash-alertas-card">
-          <div class="card-title">Alertas <span class="sub" onclick="openModal('modal-alerta')" style="cursor:pointer;color:var(--ic)">+ novo</span></div>
-          <div id="dash-alertas-body"></div>
+        <div class="card" id="dash-semana-card">
+          <div class="card-title">Esta semana <span class="sub" id="dash-semana-sub"></span></div>
+          <div id="dash-semana-body"></div>
         </div>
 
         <div class="card" id="sc-card-full">
           <div class="card-title">Saldo real da conta <span class="sub" onclick="scAbrir()" style="cursor:pointer;color:var(--ic)" id="sc-acao-txt">configurar</span></div>
           <div id="sc-body"></div>
         </div>
+      </div>
 
-        <div class="card" id="dash-semana-card">
-          <div class="card-title">Esta semana <span class="sub" id="dash-semana-sub"></span></div>
-          <div id="dash-semana-body"></div>
+      <div>
+        <div class="card" id="dash-alertas-card">
+          <div class="card-title">Alertas <span class="sub" onclick="openModal('modal-alerta')" style="cursor:pointer;color:var(--ic)">+ novo</span></div>
+          <div id="dash-alertas-body"></div>
         </div>
       </div>
     </div>
