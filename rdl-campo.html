@@ -17,6 +17,7 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#080c12;--s1:#0d1220;--s2:#111827;--s3:#141e2e;--bd:#1e2d42;--ic:#00c8ff;--or:#ff6b35;--gn:#00c87a;--rd:#ff4455;--yw:#ffb800;--mu:#6688aa;--txt:#e8f4ff;--inp:#0d1220;--inpbd:#1e2d42;--overlay:rgba(0,0,0,.8);}
+body.light{--bg:#f2f5f9;--s1:#ffffff;--s2:#ffffff;--s3:#e9eef4;--bd:#d7e0eb;--ic:#0089b8;--or:#d9531c;--gn:#00875a;--rd:#d6303f;--yw:#b87700;--mu:#5a6b80;--txt:#131b26;--inp:#ffffff;--inpbd:#c9d4e0;--overlay:rgba(20,30,45,.5);}
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
 body{font-family:"DM Mono",monospace;background:var(--bg);color:var(--txt);min-height:100vh;overflow-x:hidden;padding-bottom:74px;}
 ::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-thumb{background:var(--bd);border-radius:3px}
@@ -232,6 +233,7 @@ label{font-size:10.5px;color:var(--mu);margin-bottom:5px;display:block;font-weig
   <div class="logo"><div class="logo-icon">🛠️</div>RDL <em style="color:var(--txt);font-style:normal">Campo</em></div>
   <div class="topbar-right">
     <div class="sync-dot" id="sync-dot"></div>
+    <button class="icon-btn" id="btn-tema" onclick="alternarTema()">🌙</button>
     <button class="icon-btn" onclick="switchTab('config')">⚙️</button>
   </div>
 </div>
@@ -800,6 +802,18 @@ let store = {
 };
 
 function today(){ return new Date().toISOString().split('T')[0]; }
+function aplicarTema(tema){
+  document.body.classList.toggle('light', tema==='light');
+  document.getElementById('btn-tema').textContent = tema==='light' ? '☀️' : '🌙';
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if(meta) meta.setAttribute('content', tema==='light' ? '#f2f5f9' : '#080c12');
+}
+function alternarTema(){
+  const novo = (store.config.tema==='light') ? 'dark' : 'light';
+  store.config.tema = novo;
+  saveStore();
+  aplicarTema(novo);
+}
 function ehFormaAutomatica(forma){
   return forma==='boleto_agendado' || forma==='pix_agendado' || forma==='debito_automatico';
 }
@@ -933,6 +947,7 @@ function initApp(user){
   seedDataFimSLAlimentos();
   seedSaldoRealInicial();
   autoConfirmarBoletosVencidos();
+  aplicarTema(store.config.tema || 'dark');
   renderAll();
 }
 
