@@ -382,6 +382,29 @@ label{font-size:10.5px;color:var(--mu);margin-bottom:5px;display:block;font-weig
     <div id="analise-body"></div>
   </div>
 
+  <!-- CONTRATOS -->
+  <div class="tab-pane hide" id="pane-contratos">
+    <div class="week-nav">
+      <div class="week-nav-btns"><button class="icon-btn" onclick="ctNav(-1)">◀</button></div>
+      <div class="wn-lbl" id="ct-periodo-lbl"></div>
+      <div class="week-nav-btns"><button class="icon-btn" onclick="ctNav(1)">▶</button></div>
+    </div>
+    <div class="card" id="ct-negociar-card">
+      <div class="card-title">Hora de negociar</div>
+      <div id="ct-negociar-body"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Visão anual <span class="sub" id="ct-legenda-sub"></span></div>
+      <div id="ct-grade-body" style="overflow-x:auto"></div>
+      <div style="display:flex;gap:14px;margin-top:12px;font-size:9px;color:var(--mu);flex-wrap:wrap">
+        <span><span style="display:inline-block;width:9px;height:9px;background:rgba(0,200,122,.35);border-radius:2px;margin-right:4px"></span>confirmado</span>
+        <span><span style="display:inline-block;width:9px;height:9px;background:rgba(255,184,0,.18);border:1px dashed var(--yw);border-radius:2px;margin-right:4px"></span>estimado</span>
+        <span><span style="display:inline-block;width:9px;height:9px;background:rgba(255,68,85,.3);border-radius:2px;margin-right:4px"></span>atrasado</span>
+        <span><span style="background:#3c2a5c;color:#c9a8ff;border-radius:3px;padding:1px 4px;margin-right:3px">PMOC</span>documentação</span>
+      </div>
+    </div>
+  </div>
+
   <div class="tab-pane hide" id="pane-config">
     <div class="card">
       <div class="card-title">Conta</div>
@@ -413,6 +436,7 @@ label{font-size:10.5px;color:var(--mu);margin-bottom:5px;display:block;font-weig
   <button class="bn-item" onclick="switchTab('entradas')" id="bn-entradas"><span class="bn-ic">💰</span><span class="bn-lbl">Entradas</span></button>
   <button class="bn-item" onclick="switchTab('despesas')" id="bn-despesas"><span class="bn-ic">💸</span><span class="bn-lbl">Despesas</span></button>
   <button class="bn-item" onclick="switchTab('analise')" id="bn-analise"><span class="bn-ic">📈</span><span class="bn-lbl">Análise</span></button>
+  <button class="bn-item" onclick="switchTab('contratos')" id="bn-contratos"><span class="bn-ic">📋</span><span class="bn-lbl">Contratos</span></button>
 </div>
 
 <!-- MODAL: LANÇAMENTO ÚNICO -->
@@ -534,6 +558,12 @@ label{font-size:10.5px;color:var(--mu);margin-bottom:5px;display:block;font-weig
       </div>
       <input type="hidden" id="lc-modoacesso" value="negociar">
       <p style="font-size:10px;color:var(--mu);margin-top:4px;">Isso decide se o app te lembra de chamar o cliente no zap, e como.</p>
+      <label style="margin-top:10px">Esse contrato é PMOC?</label>
+      <div class="chip-row" id="lc-pmoc-chips">
+        <button type="button" class="chip active" data-v="nao" onclick="lcSetChip('lc-pmoc',this)">Não</button>
+        <button type="button" class="chip" data-v="sim" onclick="lcSetChip('lc-pmoc',this)">Sim</button>
+      </div>
+      <input type="hidden" id="lc-pmoc" value="nao">
     </div>
     <div class="field">
       <label>Categoria (pra análise de desempenho)</label>
@@ -1320,6 +1350,7 @@ function renderAll(){
   renderEntradas();
   renderDespesas();
   renderAnalise();
+  renderContratos();
 }
 
 // ── MODAL HELPERS ─────────────────────────────────
@@ -1442,6 +1473,8 @@ function lcResetForm(){
   document.getElementById('lc-endereco').value='';
   document.querySelectorAll('#lc-modoacesso-chips .chip').forEach((c,i)=>c.classList.toggle('active', i===0));
   document.getElementById('lc-modoacesso').value='negociar';
+  document.querySelectorAll('#lc-pmoc-chips .chip').forEach((c,i)=>c.classList.toggle('active', i===0));
+  document.getElementById('lc-pmoc').value='nao';
   document.getElementById('lc-dias-pag').value='5';
   document.getElementById('lc-diaspag-wrap').classList.add('hide');
   document.getElementById('lc-datapag').value='';
@@ -1535,6 +1568,9 @@ function lcEditar(id){
     const modoAcesso = meta.modoAcesso || 'negociar';
     highlightChip('lc-modoacesso-chips', modoAcesso);
     document.getElementById('lc-modoacesso').value = modoAcesso;
+    const pmocVal = meta.pmoc ? 'sim' : 'nao';
+    highlightChip('lc-pmoc-chips', pmocVal);
+    document.getElementById('lc-pmoc').value = pmocVal;
   }
   else lcSetAgendavelValor(l.agendavel !== false);
   buildCategoriaChips(l.categoria||'Outros');
@@ -1607,6 +1643,7 @@ function lcSalvar(){
     store.contratosMeta[chave].telefone = document.getElementById('lc-telefone').value.trim();
     store.contratosMeta[chave].endereco = document.getElementById('lc-endereco').value.trim();
     store.contratosMeta[chave].modoAcesso = document.getElementById('lc-modoacesso').value;
+    store.contratosMeta[chave].pmoc = document.getElementById('lc-pmoc').value === 'sim';
   }
   saveStore();
   closeModal('modal-lanc');
@@ -2789,6 +2826,71 @@ function graficoAnoHtml(){
       </div>`;
     }).join('')}
   </div>`;
+}
+let ctOffset = 0;
+const NOMES_MES_ABREV = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+function ctNav(dir){ ctOffset += dir; renderContratos(); }
+function ctMesOffset(mesBase, n){
+  const [y,m] = mesBase.split('-').map(Number);
+  const d = new Date(y, m-1+n, 1);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+function renderContratos(){
+  // Hora de negociar
+  const avisos = alertasNegociacaoContratos();
+  const negBody = document.getElementById('ct-negociar-body');
+  if(!avisos.length){
+    negBody.innerHTML = '<div class="empty-msg">Nada pra negociar agora — tudo em dia.</div>';
+  } else {
+    negBody.innerHTML = avisos.map(a=>{
+      const wa = a.meta.telefone ? linkWhatsApp(a.meta.telefone, a.msg) : null;
+      const acao = wa
+        ? `<button class="btn btn-outline btn-sm" onclick="window.open('${wa}','_blank')">💬 WhatsApp</button>`
+        : `<button class="btn btn-outline btn-sm" onclick="lcEditarContratoPorCliente('${a.cliente}')">Cadastrar telefone</button>`;
+      const cls = a.urgencia===0 ? 'alert-err' : 'alert-warn';
+      const prefix = a.urgencia===0 ? '⛔' : '🟠';
+      return `<div class="alert-item ${cls}"><span>${prefix}</span><div style="flex:1"><div>${a.texto}</div><div class="alert-acao">${acao}</div></div></div>`;
+    }).join('');
+  }
+
+  // Visão anual em grade
+  const baseMes = ctMesOffset(todayMonth(), ctOffset);
+  const meses = []; for(let i=0;i<6;i++) meses.push(ctMesOffset(baseMes,i));
+  const [by,bm] = baseMes.split('-').map(Number);
+  const label = new Date(by,bm-1,1).toLocaleDateString('pt-BR',{month:'short',year:'numeric'});
+  document.getElementById('ct-periodo-lbl').textContent = `a partir de ${label}`;
+
+  const contratos = Object.entries(store.contratosMeta).filter(([,m])=>m.dataInicio);
+  document.getElementById('ct-legenda-sub').textContent = `${contratos.length} contrato${contratos.length!==1?'s':''} ativo${contratos.length!==1?'s':''}`;
+  const grade = document.getElementById('ct-grade-body');
+  if(!contratos.length){
+    grade.innerHTML = '<div class="empty-msg">Nenhum contrato recorrente cadastrado ainda</div>';
+    return;
+  }
+  const colWidth = '52px';
+  let html = `<div style="display:grid;grid-template-columns:120px repeat(${meses.length},${colWidth});gap:4px;font-size:9px;min-width:${120+meses.length*54}px">`;
+  html += `<div></div>`;
+  meses.forEach(m=>{ html += `<div style="text-align:center;color:var(--mu)">${NOMES_MES_ABREV[parseInt(m.slice(5,7))-1].toUpperCase()}</div>`; });
+  contratos.forEach(([chave, meta])=>{
+    const [cliente, servico] = chave.split('|');
+    html += `<div style="display:flex;align-items:center;gap:4px;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${cliente} · ${servico}">${cliente}${meta.pmoc?' <span style="background:#3c2a5c;color:#c9a8ff;border-radius:3px;padding:0 3px;font-size:7px">PMOC</span>':''}</div>`;
+    meses.forEach(mes=>{
+      if(meta.dataFim && mes > meta.dataFim.slice(0,7)){ html += `<div></div>`; return; }
+      if(mes < meta.dataInicio.slice(0,7)){ html += `<div></div>`; return; }
+      const oc = ocorrenciaParaMes(cliente, servico, mes);
+      if(!oc || !oc.agendavel){ html += `<div style="height:22px;border-radius:4px;background:var(--s3);opacity:.3"></div>`; return; }
+      let estilo = 'background:rgba(255,184,0,.18);border:1px dashed var(--yw)'; // estimado
+      if(oc.status==='concluido' || oc.confirmado) estilo = 'background:rgba(0,200,122,.35)';
+      else if(oc.data < today()) estilo = 'background:rgba(255,68,85,.3)';
+      html += `<div style="height:22px;border-radius:4px;cursor:pointer;${estilo}" onclick="lcEditar('${oc.id}')" title="${fmtDateBR(oc.data)}"></div>`;
+    });
+  });
+  html += `</div>`;
+  grade.innerHTML = html;
+}
+function lcEditarContratoPorCliente(cliente){
+  const l = store.lancamentos.filter(x=>x.recorrente && x.cliente===cliente).sort((a,b)=>(b.data||'').localeCompare(a.data||''))[0];
+  if(l) lcEditar(l.id);
 }
 function renderAnalise(){
   const mes = mesFoco;
