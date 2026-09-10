@@ -2644,10 +2644,16 @@ function alertasNegociacaoContratos(){
   const mesAtual = todayMonth();
   const proximoMes = proximoMesStr(mesAtual);
   const ultimoDiaMesAtual = new Date(hoje.getFullYear(), hoje.getMonth()+1, 0).getDate();
+  const contagemPorCliente = {};
+  Object.keys(store.contratosMeta).forEach(chave=>{
+    const cli = chave.split('|')[0];
+    contagemPorCliente[cli] = (contagemPorCliente[cli]||0)+1;
+  });
   Object.entries(store.contratosMeta).forEach(([chave, meta])=>{
     const modo = meta.modoAcesso || 'negociar';
     if(modo==='livre') return;
     const [cliente, servico] = chave.split('|');
+    const nome = contagemPorCliente[cliente]>1 ? `${cliente} (${servico})` : cliente;
     if(meta.dataFim && mesAtual > meta.dataFim.slice(0,7)) return;
     const passo = passoPeriodicidade(meta.periodicidade);
     const ehVisitaEsteMes = diffMeses(meta.dataInicio.slice(0,7), mesAtual) % passo === 0;
@@ -2660,7 +2666,7 @@ function alertasNegociacaoContratos(){
       const diasParaVisita = Math.round((new Date(oc.data+'T00:00:00') - hoje)/86400000);
       if(diasParaVisita>=0 && diasParaVisita<=2){
         resultado.push({cliente, meta, urgencia:1,
-          texto:`${cliente}: visita chegando — avisa que estão indo`,
+          texto:`${nome}: visita chegando — avisa que estão indo`,
           msg:`Oi! Vamos passar aí pra fazer a manutenção preventiva, tudo certo?`});
       }
       return;
@@ -2678,14 +2684,14 @@ function alertasNegociacaoContratos(){
     }
     if(!tier) return;
     const textos = {
-      pre: `${cliente}: mês da manutenção chegando — já pode ir combinando`,
-      inicio: `${cliente}: começou o mês da manutenção, ainda sem data marcada`,
-      meio: `${cliente}: já estamos na metade do mês, ainda sem confirmar`
+      pre: `${nome}: mês da manutenção chegando — já pode ir combinando`,
+      inicio: `${nome}: começou o mês da manutenção, ainda sem data marcada`,
+      meio: `${nome}: já estamos na metade do mês, ainda sem confirmar`
     };
     const msgs = {
-      pre: `Oi! Está chegando o mês da manutenção aí na ${cliente} — já podemos ir combinando uma data?`,
-      inicio: `Oi! Esse é o mês da manutenção preventiva na ${cliente} — qual dia fica bom pra vocês?`,
-      meio: `Oi! Ainda não fechamos a data da manutenção desse mês na ${cliente} — como fica melhor pra vocês?`
+      pre: `Oi! Está chegando o mês da manutenção aí na ${nome} — já podemos ir combinando uma data?`,
+      inicio: `Oi! Esse é o mês da manutenção preventiva na ${nome} — qual dia fica bom pra vocês?`,
+      meio: `Oi! Ainda não fechamos a data da manutenção desse mês na ${nome} — como fica melhor pra vocês?`
     };
     resultado.push({cliente, meta, urgencia: tier==='meio'?0:1, texto: textos[tier], msg: msgs[tier]});
   });
@@ -2922,9 +2928,15 @@ function renderContratos(){
   let html = `<div style="display:grid;grid-template-columns:120px repeat(${meses.length},${colWidth});gap:4px;font-size:9px;min-width:${120+meses.length*54}px">`;
   html += `<div></div>`;
   meses.forEach(m=>{ html += `<div style="text-align:center;color:var(--mu)">${NOMES_MES_ABREV[parseInt(m.slice(5,7))-1].toUpperCase()}</div>`; });
+  const contagemPorCliente = {};
+  contratos.forEach(([chave])=>{
+    const cli = chave.split('|')[0];
+    contagemPorCliente[cli] = (contagemPorCliente[cli]||0)+1;
+  });
   contratos.forEach(([chave, meta])=>{
     const [cliente, servico] = chave.split('|');
-    html += `<div style="display:flex;align-items:center;gap:4px;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${cliente} · ${servico}">${cliente}${meta.pmoc?' <span style="background:#3c2a5c;color:#c9a8ff;border-radius:3px;padding:0 3px;font-size:7px">PMOC</span>':''}</div>`;
+    const nomeLinha = contagemPorCliente[cliente]>1 ? `${cliente} <span style="color:var(--mu);font-weight:400">· ${servico}</span>` : cliente;
+    html += `<div style="display:flex;align-items:center;gap:4px;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${cliente} · ${servico}">${nomeLinha}${meta.pmoc?' <span style="background:#3c2a5c;color:#c9a8ff;border-radius:3px;padding:0 3px;font-size:7px">PMOC</span>':''}</div>`;
     meses.forEach(mes=>{
       if(meta.dataFim && mes > meta.dataFim.slice(0,7)){ html += `<div></div>`; return; }
       if(mes < meta.dataInicio.slice(0,7)){ html += `<div></div>`; return; }
