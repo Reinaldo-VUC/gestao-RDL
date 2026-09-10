@@ -987,6 +987,7 @@ function initApp(user){
   limparDuplicatasRecorrentes();
   migrarAncorasContratos();
   seedDataFimSLAlimentos();
+  corrigirAgendavelContratos();
   seedSaldoRealInicial();
   autoConfirmarBoletosVencidos();
   aplicarTema(store.config.tema || 'dark');
@@ -1255,6 +1256,26 @@ function seedSaldoRealInicial(){
   store.config.saldoBase = 6560.06;
   store.config.dataBaseSaldo = today();
   store.config.seedSaldoRealV1 = true;
+  saveStore();
+}
+
+// ═══════════════════════════════════════════════
+// MIGRAÇÃO — recalcula "agendavel" de contratos já existentes, que ficaram gravados
+// como true pra todo mês de quando essa distinção (periodicidade só decide a agenda) ainda não existia
+// ═══════════════════════════════════════════════
+function corrigirAgendavelContratos(){
+  if(store.config && store.config.corrigirAgendavelV1) return;
+  if(!store.config) store.config = {};
+  store.lancamentos.forEach(l=>{
+    if(!l.recorrente || !l.data) return;
+    const chave = l.cliente+'|'+l.servico;
+    const meta = store.contratosMeta[chave];
+    if(!meta || !meta.dataInicio) return;
+    const passo = passoPeriodicidade(meta.periodicidade);
+    const dif = diffMeses(meta.dataInicio.slice(0,7), l.data.slice(0,7));
+    l.agendavel = dif>=0 && (dif % passo === 0);
+  });
+  store.config.corrigirAgendavelV1 = true;
   saveStore();
 }
 
