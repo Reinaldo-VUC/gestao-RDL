@@ -990,6 +990,7 @@ function initApp(user){
   migrarParcelasReferencia();
   limparDuplicatasRecorrentes();
   migrarAncorasContratos();
+  corrigirContratosMetaSemData();
   seedDataFimSLAlimentos();
   corrigirAgendavelContratos();
   seedSaldoRealInicial();
@@ -1260,6 +1261,27 @@ function seedSaldoRealInicial(){
   store.config.saldoBase = 6560.06;
   store.config.dataBaseSaldo = today();
   store.config.seedSaldoRealV1 = true;
+  saveStore();
+}
+
+// ═══════════════════════════════════════════════
+// CORREÇÃO EMERGENCIAL — contratos que ficaram sem data de início travavam o app inteiro
+// (Entradas, Despesas, Contratos paravam de carregar). Preenche com a data mais antiga
+// conhecida desse contrato, ou hoje, se não achar nenhuma.
+// ═══════════════════════════════════════════════
+function corrigirContratosMetaSemData(){
+  if(store.config && store.config.corrigirContratosMetaV1) return;
+  if(!store.config) store.config = {};
+  Object.entries(store.contratosMeta).forEach(([chave, meta])=>{
+    if(meta.dataInicio) return;
+    const [cliente, servico] = chave.split('|');
+    const registros = store.lancamentos.filter(l=>l.recorrente && l.cliente===cliente && l.servico===servico && l.data).sort((a,b)=>(a.data||'').localeCompare(b.data||''));
+    const dataBase = registros.length ? registros[0].data : today();
+    meta.dataInicio = dataBase;
+    meta.dataFim = meta.dataFim || addMesesData(dataBase,12);
+    meta.periodicidade = meta.periodicidade || (registros[0] && registros[0].periodicidade) || 'mensal';
+  });
+  store.config.corrigirContratosMetaV1 = true;
   saveStore();
 }
 
@@ -1691,6 +1713,12 @@ function lcSalvar(){
     // telefone, endereço e modo de acesso podem ser atualizados a qualquer momento
     const chave = cliente+'|'+obj.servico;
     if(!store.contratosMeta[chave]) store.contratosMeta[chave] = {};
+    if(!store.contratosMeta[chave].dataInicio){
+      // autocorreção — se por algum motivo esse contrato ficou sem data de início, preenche agora
+      store.contratosMeta[chave].dataInicio = obj.data;
+      store.contratosMeta[chave].dataFim = store.contratosMeta[chave].dataFim || addMesesData(obj.data,12);
+      store.contratosMeta[chave].periodicidade = store.contratosMeta[chave].periodicidade || obj.periodicidade;
+    }
     store.contratosMeta[chave].telefone = document.getElementById('lc-telefone').value.trim();
     store.contratosMeta[chave].endereco = document.getElementById('lc-endereco').value.trim();
     store.contratosMeta[chave].modoAcesso = document.getElementById('lc-modoacesso').value;
@@ -2650,6 +2678,7 @@ function alertasNegociacaoContratos(){
     contagemPorCliente[cli] = (contagemPorCliente[cli]||0)+1;
   });
   Object.entries(store.contratosMeta).forEach(([chave, meta])=>{
+    if(!meta.dataInicio) return; // registro incompleto — não trava o app, só ignora
     const modo = meta.modoAcesso || 'negociar';
     if(modo==='livre') return;
     const [cliente, servico] = chave.split('|');
