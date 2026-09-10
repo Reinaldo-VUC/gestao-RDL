@@ -522,6 +522,18 @@ label{font-size:10.5px;color:var(--mu);margin-bottom:5px;display:block;font-weig
         <button type="button" class="btn btn-outline btn-sm" onclick="lcCorrigirDatasContrato()">Corrigir</button>
       </div>
       <p style="font-size:10px;color:var(--mu);margin-top:4px;">Contratos novos começam com a data acima e terminam 12 meses depois, automaticamente. Use "Corrigir" só se esse contrato for uma exceção.</p>
+      <div class="field-row" style="margin-top:10px">
+        <div class="field"><label>Telefone do contato (opcional)</label><input id="lc-telefone" placeholder="(11) 99999-9999"></div>
+        <div class="field"><label>Endereço (opcional)</label><input id="lc-endereco" placeholder="Rua, número, bairro"></div>
+      </div>
+      <label>Como funciona o acesso nesse contrato?</label>
+      <div class="chip-row" id="lc-modoacesso-chips">
+        <button type="button" class="chip active" data-v="negociar" onclick="lcSetChip('lc-modoacesso',this)">Precisa combinar data</button>
+        <button type="button" class="chip" data-v="avisar" onclick="lcSetChip('lc-modoacesso',this)">Só avisar que vamos</button>
+        <button type="button" class="chip" data-v="livre" onclick="lcSetChip('lc-modoacesso',this)">Acesso livre</button>
+      </div>
+      <input type="hidden" id="lc-modoacesso" value="negociar">
+      <p style="font-size:10px;color:var(--mu);margin-top:4px;">Isso decide se o app te lembra de chamar o cliente no zap, e como.</p>
     </div>
     <div class="field">
       <label>Categoria (pra análise de desempenho)</label>
@@ -1426,6 +1438,10 @@ function lcResetForm(){
   document.getElementById('lc-custo').value='';
   document.getElementById('lc-obs').value='';
   document.getElementById('lc-modalidade-pag').value='padrao';
+  document.getElementById('lc-telefone').value='';
+  document.getElementById('lc-endereco').value='';
+  document.querySelectorAll('#lc-modoacesso-chips .chip').forEach((c,i)=>c.classList.toggle('active', i===0));
+  document.getElementById('lc-modoacesso').value='negociar';
   document.getElementById('lc-dias-pag').value='5';
   document.getElementById('lc-diaspag-wrap').classList.add('hide');
   document.getElementById('lc-datapag').value='';
@@ -1514,6 +1530,11 @@ function lcEditar(id){
     highlightChip('lc-modalidade-chips', modPag);
     document.getElementById('lc-diaspag-wrap').classList.toggle('hide', modPag!=='execucao');
     document.getElementById('lc-dias-pag').value = l.diasParaPagamento || 5;
+    document.getElementById('lc-telefone').value = meta.telefone || '';
+    document.getElementById('lc-endereco').value = meta.endereco || '';
+    const modoAcesso = meta.modoAcesso || 'negociar';
+    highlightChip('lc-modoacesso-chips', modoAcesso);
+    document.getElementById('lc-modoacesso').value = modoAcesso;
   }
   else lcSetAgendavelValor(l.agendavel !== false);
   buildCategoriaChips(l.categoria||'Outros');
@@ -1578,6 +1599,14 @@ function lcSalvar(){
     if(!store.contratosMeta[chave]){
       store.contratosMeta[chave] = { dataInicio: obj.data, dataFim: addMesesData(obj.data,12), periodicidade: obj.periodicidade };
     }
+  }
+  if(obj.recorrente){
+    // telefone, endereço e modo de acesso podem ser atualizados a qualquer momento
+    const chave = cliente+'|'+obj.servico;
+    if(!store.contratosMeta[chave]) store.contratosMeta[chave] = {};
+    store.contratosMeta[chave].telefone = document.getElementById('lc-telefone').value.trim();
+    store.contratosMeta[chave].endereco = document.getElementById('lc-endereco').value.trim();
+    store.contratosMeta[chave].modoAcesso = document.getElementById('lc-modoacesso').value;
   }
   saveStore();
   closeModal('modal-lanc');
@@ -1779,6 +1808,15 @@ function renderDashboard(){
     const acao = `<button class="btn btn-outline btn-sm" onclick="switchTab('despesas')">Ver despesas</button>`;
     items.push({urgencia:0, cls:'alert-err', html:`<div class="alert-item alert-err"><span>⛔</span><div style="flex:1"><div><b>${pendentesVencidas.length} despesa${pendentesVencidas.length>1?'s':''} pendente${pendentesVencidas.length>1?'s':''}</b> já passou da data (${R(total)}) — confirma se já foi paga</div><div class="alert-acao">${acao}</div></div></div>`});
   }
+  alertasNegociacaoContratos().forEach(a=>{
+    const wa = a.meta.telefone ? linkWhatsApp(a.meta.telefone, a.msg) : null;
+    const acao = wa
+      ? `<button class="btn btn-outline btn-sm" onclick="window.open('${wa}','_blank')">💬 WhatsApp</button>`
+      : `<button class="btn btn-outline btn-sm" onclick="irParaContratos()">Cadastrar telefone</button>`;
+    const cls = a.urgencia===0 ? 'alert-err' : 'alert-warn';
+    const prefix = a.urgencia===0 ? '⛔' : '🟠';
+    items.push({urgencia:a.urgencia, cls, html:`<div class="alert-item ${cls}"><span>${prefix}</span><div style="flex:1"><div>${a.texto}</div><div class="alert-acao">${acao}</div></div></div>`});
+  });
   items.sort((a,b)=>(a.urgencia??2)-(b.urgencia??2));
   alertasBody.innerHTML = items.length ? items.map(i=>i.html).join('') : '<div class="empty-msg">Sem alertas no momento</div>';
   const badge = document.getElementById('bn-alertas-badge');
@@ -1961,11 +1999,13 @@ function agConfirmarReagendar(){
   const novaData = document.getElementById('ag-reagendar-data').value;
   if(!novaData){ showToast('Escolha uma data'); return; }
   const dataAntiga = l.data;
-  if(novaData===dataAntiga){ closeModal('modal-reagendar'); return; }
-  l.obs = (l.obs ? l.obs+' | ' : '') + `Reagendado de ${fmtDateBR(dataAntiga)} para ${fmtDateBR(novaData)}`;
-  l.data = novaData;
+  if(novaData!==dataAntiga){
+    l.obs = (l.obs ? l.obs+' | ' : '') + `Reagendado de ${fmtDateBR(dataAntiga)} para ${fmtDateBR(novaData)}`;
+    l.data = novaData;
+  }
+  l.confirmado = true; // ação explícita do usuário — não é mais só uma estimativa
   saveStore(); closeModal('modal-reagendar'); renderAll();
-  showToast('Reagendado');
+  showToast('Confirmado');
 }
 
 function getSemanaAtual(offsetSemanas){
@@ -2051,6 +2091,7 @@ function renderAgendaMes(){
 }
 
 function renderLancItem(l){
+  const meta = l.recorrente ? store.contratosMeta[l.cliente+'|'+l.servico] : null;
   return `<div class="lanc-item ${l.status==='cancelado'?'cancelado':l.statusPag}" onclick="lcEditar('${l.id}')">
     <div class="lanc-top">
       <div><div class="lanc-cli">${l.cliente}</div><div class="lanc-srv">${l.servico}${l.orc?' · Orç '+l.orc:''}</div></div>
@@ -2060,8 +2101,10 @@ function renderLancItem(l){
       <span class="tag tag-${l.statusPag}">${l.statusPag==='pago'?'Pago':'Pendente'}</span>
       <span class="tag tag-forma">${labelForma(l.forma)}</span>
       ${l.recorrente?'<span class="tag tag-rec">Recorrente</span>':''}
+      ${l.recorrente && l.status!=='cancelado' && l.status!=='concluido' ? (l.confirmado?'<span class="tag" style="background:rgba(0,200,122,.15);color:var(--gn)">Confirmado</span>':'<span class="tag" style="background:rgba(255,184,0,.15);color:var(--yw)">Estimado</span>') : ''}
       ${l.status==='cancelado'?'<span class="tag tag-cancelado">Cancelado</span>':''}
       ${l.status!=='cancelado'?`<button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="event.stopPropagation();agAbrirReagendar('${l.id}')">📅 Reagendar</button>`:''}
+      ${meta && meta.endereco ? `<button class="btn btn-outline btn-sm" onclick="event.stopPropagation();window.open('${linkWaze(meta.endereco)}','_blank')">🗺️ Waze</button>` : ''}
     </div>
   </div>`;
 }
@@ -2120,6 +2163,15 @@ function montarDataComDia(mesAlvo, dia){
   const ultimoDiaDoMes = new Date(ano, mesNum, 0).getDate(); // dia 0 do mês seguinte = último dia deste mês
   const diaSeguro = Math.min(Math.max(1,dia), ultimoDiaDoMes);
   return `${ano}-${String(mesNum).padStart(2,'0')}-${String(diaSeguro).padStart(2,'0')}`;
+}
+function linkWhatsApp(telefone, mensagem){
+  const limpo = (telefone||'').replace(/\D/g,'');
+  if(!limpo) return null;
+  const comCodigoPais = limpo.length<=11 ? '55'+limpo : limpo;
+  return `https://wa.me/${comCodigoPais}?text=${encodeURIComponent(mensagem)}`;
+}
+function linkWaze(endereco){
+  return `https://waze.com/ul?q=${encodeURIComponent(endereco)}&navigate=yes`;
 }
 function passoPeriodicidade(periodicidade){
   return {bimestral:2, trimestral:3, quadrimestral:4, semestral:6}[periodicidade] || 1; // mensal/quinzenal = 1
@@ -2494,6 +2546,62 @@ function dvExcluir(){
 function diffMeses(m1, m2){
   const [y1,mo1]=m1.split('-').map(Number), [y2,mo2]=m2.split('-').map(Number);
   return (y2-y1)*12 + (mo2-mo1);
+}
+// Avisos dinâmicos pra contratos modo "negociar": pré-aviso ~5 dias antes do mês da visita
+// começar, aviso no início desse mês, e aviso mais forte no meio se ainda não confirmou.
+function alertasNegociacaoContratos(){
+  const resultado = [];
+  const hoje = new Date();
+  const diaHoje = hoje.getDate();
+  const mesAtual = todayMonth();
+  const proximoMes = proximoMesStr(mesAtual);
+  const ultimoDiaMesAtual = new Date(hoje.getFullYear(), hoje.getMonth()+1, 0).getDate();
+  Object.entries(store.contratosMeta).forEach(([chave, meta])=>{
+    const modo = meta.modoAcesso || 'negociar';
+    if(modo==='livre') return;
+    const [cliente, servico] = chave.split('|');
+    if(meta.dataFim && mesAtual > meta.dataFim.slice(0,7)) return;
+    const passo = passoPeriodicidade(meta.periodicidade);
+    const ehVisitaEsteMes = diffMeses(meta.dataInicio.slice(0,7), mesAtual) % passo === 0;
+    const ehVisitaProximoMes = diffMeses(meta.dataInicio.slice(0,7), proximoMes) % passo === 0;
+
+    if(modo==='avisar'){
+      if(!ehVisitaEsteMes) return;
+      const oc = ocorrenciaParaMes(cliente, servico, mesAtual);
+      if(!oc || oc.status==='concluido' || oc.status==='cancelado') return;
+      const diasParaVisita = Math.round((new Date(oc.data+'T00:00:00') - hoje)/86400000);
+      if(diasParaVisita>=0 && diasParaVisita<=2){
+        resultado.push({cliente, meta, urgencia:1,
+          texto:`${cliente}: visita chegando — avisa que estão indo`,
+          msg:`Oi! Vamos passar aí pra fazer a manutenção preventiva, tudo certo?`});
+      }
+      return;
+    }
+
+    // modo negociar
+    let tier = null;
+    if(ehVisitaProximoMes && diaHoje >= ultimoDiaMesAtual-5) tier = 'pre';
+    if(ehVisitaEsteMes){
+      const oc = ocorrenciaParaMes(cliente, servico, mesAtual);
+      if(oc && !oc.confirmado && oc.status!=='concluido' && oc.status!=='cancelado'){
+        if(diaHoje<=5) tier = 'inicio';
+        else if(diaHoje>=15) tier = 'meio';
+      }
+    }
+    if(!tier) return;
+    const textos = {
+      pre: `${cliente}: mês da manutenção chegando — já pode ir combinando`,
+      inicio: `${cliente}: começou o mês da manutenção, ainda sem data marcada`,
+      meio: `${cliente}: já estamos na metade do mês, ainda sem confirmar`
+    };
+    const msgs = {
+      pre: `Oi! Está chegando o mês da manutenção aí na ${cliente} — já podemos ir combinando uma data?`,
+      inicio: `Oi! Esse é o mês da manutenção preventiva na ${cliente} — qual dia fica bom pra vocês?`,
+      meio: `Oi! Ainda não fechamos a data da manutenção desse mês na ${cliente} — como fica melhor pra vocês?`
+    };
+    resultado.push({cliente, meta, urgencia: tier==='meio'?0:1, texto: textos[tier], msg: msgs[tier]});
+  });
+  return resultado;
 }
 function parcelaDoMes(d, mes){
   const base = d.parcelaRef!==undefined ? d.parcelaRef : (d.parcelaAtual||0);
