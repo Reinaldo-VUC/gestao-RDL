@@ -530,6 +530,10 @@ label{font-size:10.5px;color:var(--mu);margin-bottom:5px;display:block;font-weig
         <button class="chip" data-v="semestral" onclick="lcSetChip('lc-periodicidade',this)">Semestral</button>
       </div>
       <input type="hidden" id="lc-periodicidade" value="mensal">
+      <div class="hide" id="lc-corrigir-periodicidade-wrap" style="margin-top:8px">
+        <p style="font-size:10px;color:var(--mu);margin-bottom:6px;">Esses botões acima só valem pra contrato novo — pra um contrato que você já tinha, a periodicidade fica travada. Se ela estiver errada, corrige aqui:</p>
+        <button type="button" class="btn btn-outline btn-sm" onclick="lcCorrigirPeriodicidade()">Corrigir periodicidade deste contrato</button>
+      </div>
       <label style="margin-top:10px">Modalidade de pagamento</label>
       <div class="chip-row" id="lc-modalidade-chips">
         <button type="button" class="chip active" data-v="padrao" onclick="lcSetModalidadePag('padrao',this)">Data fixa do contrato</button>
@@ -1411,6 +1415,7 @@ function setTipoServicoUI(isRecorrente){
   document.getElementById('lc-periodicidade-wrap').classList.toggle('hide', !isRecorrente);
   document.getElementById('lc-agendavel-wrap').classList.toggle('hide', isRecorrente);
   const criandoNovo = !document.getElementById('lc-id').value;
+  document.getElementById('lc-corrigir-periodicidade-wrap').classList.toggle('hide', criandoNovo);
   document.getElementById('lc-data-label').textContent = isRecorrente ? 'Data do 1º pagamento' : 'Data';
   document.getElementById('lc-datapag-wrap').classList.toggle('hide', isRecorrente && criandoNovo);
   if(isRecorrente) lcSetAgendavelValor(true); // contrato sempre aparece na agenda
@@ -1419,6 +1424,31 @@ function setTipoServicoUI(isRecorrente){
     const dataInicio = document.getElementById('lc-data').value || today();
     document.getElementById('lc-contrato-datas-txt').textContent = `1º pagamento ${fmtDateBR(dataInicio)} · contrato até ${fmtDateBR(addMesesData(dataInicio,12))} (12 meses) · próximos meses calculados sozinho`;
   }
+}
+function lcCorrigirPeriodicidade(){
+  const cliente = document.getElementById('lc-cliente').value.trim();
+  const servico = document.getElementById('lc-servico').value.trim();
+  if(!cliente || !servico){ showToast('Preencha cliente e serviço primeiro'); return; }
+  const chave = cliente+'|'+servico;
+  const meta = store.contratosMeta[chave];
+  if(!meta || !meta.dataInicio){ showToast('Contrato não encontrado'); return; }
+  const validas = ['mensal','bimestral','trimestral','quadrimestral','semestral'];
+  const nova = prompt(`Periodicidade real desse contrato:\n${validas.join(', ')}`, meta.periodicidade||'mensal');
+  if(nova===null) return;
+  const valor = nova.trim().toLowerCase();
+  if(!validas.includes(valor)){ showToast('Periodicidade inválida — use: '+validas.join(', ')); return; }
+  meta.periodicidade = valor;
+  const passo = passoPeriodicidade(valor);
+  store.lancamentos.forEach(l=>{
+    if(l.recorrente && l.cliente===cliente && l.servico===servico && l.data){
+      const dif = diffMeses(meta.dataInicio.slice(0,7), l.data.slice(0,7));
+      l.agendavel = dif>=0 && (dif % passo === 0);
+    }
+  });
+  saveStore();
+  setChipValue('lc-periodicidade', valor);
+  showToast('Periodicidade corrigida');
+  renderAll();
 }
 function lcCorrigirDatasContrato(){
   const cliente = document.getElementById('lc-cliente').value.trim();
