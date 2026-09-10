@@ -1831,6 +1831,15 @@ function renderSaldoReal(){
   } else {
     html += `<div class="empty-msg">Ainda sem conciliação — toca em "conciliar" quando quiser conferir com o extrato do banco.</div>`;
   }
+  if(store.conciliacoes.length){
+    const mediaDif = store.conciliacoes.reduce((s,c)=>s+Math.abs(c.diferenca),0) / store.conciliacoes.length;
+    const corMedia = mediaDif<1 ? 'var(--gn)' : (mediaDif<100 ? 'var(--yw)' : 'var(--rd)');
+    html += `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:14px;padding-top:12px;border-top:1px solid var(--bd)">
+      <div style="text-align:center"><div style="font-size:8.5px;color:var(--mu)">SALDO REAL</div><div style="font-family:'Syne',sans-serif;font-weight:800;font-size:13px;color:${calculado>=0?'var(--gn)':'var(--rd)'}">${R(calculado)}</div></div>
+      <div style="text-align:center"><div style="font-size:8.5px;color:var(--mu)">CONCILIAÇÕES</div><div style="font-family:'Syne',sans-serif;font-weight:800;font-size:13px;color:var(--ic)">${store.conciliacoes.length}</div></div>
+      <div style="text-align:center"><div style="font-size:8.5px;color:var(--mu)">DIF. MÉDIA</div><div style="font-family:'Syne',sans-serif;font-weight:800;font-size:13px;color:${corMedia}">${R(mediaDif)}</div></div>
+    </div>`;
+  }
   body.innerHTML = html;
 }
 function scAbrir(){
@@ -1873,8 +1882,12 @@ function scConciliar(){
   if(isNaN(real)){ showToast('Informe o saldo real'); return; }
   const calc = saldoAcumuladoCalculado();
   store.conciliacoes.push({ id:uid(), data:today(), saldoReal:real, saldoCalculado:calc, diferenca: real-calc });
+  // o valor real vira o novo marco — assim o cálculo parte sempre do último número confirmado,
+  // e só volta a divergir com o que acontecer DEPOIS dessa conciliação (comportamento correto)
+  store.config.saldoBase = real;
+  store.config.dataBaseSaldo = today();
   saveStore(); closeModal('modal-saldo-real'); renderAll();
-  showToast('Conciliação registrada');
+  showToast('Conciliação registrada — saldo atualizado');
 }
 
 function renderDashSemana(){
